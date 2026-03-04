@@ -1,0 +1,13 @@
+"""
+extensions.py
+
+Central place where all Flask extensions are created.
+They are initialized later inside create_app()
+"""
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_login import LoginManager
+
+db = SQLAlchemy()
+migrate = Migrate()
+login_manager = LoginManager()
