@@ -5,6 +5,9 @@ venv/
 .env
 .env.*
 
+# Instance folder (runtime files like SQLite DB)
+instance/
+
 # Python cache
 __pycache__/
 *.pyc
@@ -20,9 +23,6 @@ __pycache__/
 # SQLite databases
 *.sqlite
 *.sqlite3
-
-# Flask instance folder
-instance/
 
 # Logs
 *.log
