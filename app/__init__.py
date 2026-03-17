@@ -1,7 +1,7 @@
 from flask import Flask
 from .extensions import db, migrate, login_manager
-from .routes import blueprints
-from .models import db
+from .routes import register_blueprints
+from .models import User
 from config import Config
 
 
@@ -20,8 +20,17 @@ def create_app(config_class=Config):
     migrate.init_app(app, db)    # migrate connection to app and db
     login_manager.init_app(app)  # login_manager connection to app
 
+    # authentication config
+    login_manager.login_view = "auth.login"
+    login_manager.login_message_category = "info"
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        if user_id is None:
+            return None
+        return db.session.get(User, int(user_id))
+
     # register the blueprints list
-    for blueprint in blueprints:
-        app.register_blueprint(blueprint)
+    register_blueprints(app)
 
     return app

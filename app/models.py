@@ -1,5 +1,59 @@
 from datetime import datetime, UTC
 from .extensions import db
+from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+class User(UserMixin, db.Model):
+    """
+    Represents an application user.
+
+    Stores authentication credentials and links to messages
+    submitted by the user.
+    """
+
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+
+
+    # Prevents direct access to the password attribute.
+    @property
+    def password(self):
+        raise AttributeError("password is not a readable attribute")
+
+    # Catches the raw user password comes from the user,
+    # then auto hashes the raw password before storing it
+    @password.setter
+    def password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    # Verifies a login attempt by comparing the entered password
+    # with the stored hashed password.
+    # Returns True if the password matches, otherwise False.
+    def verify_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC)
+    )
+
+    # users table relations with other tables
+    messages = db.relationship(
+        "Message",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+
+    # debugging
+    def __repr__(self):
+        return f"<User id={self.id} email={self.email}>"
 
 
 class Message(db.Model):
@@ -15,11 +69,13 @@ class Message(db.Model):
 
     # Data columns
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
 
     subject = db.Column(db.String(255))
     sender_email = db.Column(db.String(255), index=True)
     raw_text = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(30), nullable=False, index=True, default="pending")
+    note = db.Column(db.String(400), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
     updated_at = db.Column(
         db.DateTime(timezone=True),
@@ -29,6 +85,11 @@ class Message(db.Model):
     )
 
     # Message table relations with other tables
+    user = db.relationship(
+        "User",
+        back_populates="messages",
+    )
+
     analysis_result = db.relationship(
         "AnalysisResult",
         back_populates="message",
@@ -66,13 +127,13 @@ class AnalysisResult(db.Model):
     message_id = db.Column(db.Integer, db.ForeignKey("messages.id"), nullable=False, unique=True)
 
     # ML predictions
-    message_category = db.Column(db.String(100))
+    message_category = db.Column(db.String(100), index=True)
     category_confidence = db.Column(db.Float)
 
-    urgency_level = db.Column(db.String(50))
+    urgency_level = db.Column(db.String(50), index=True)
     urgency_confidence = db.Column(db.Float)
 
-    job_field = db.Column(db.String(100))
+    job_field = db.Column(db.String(100), index=True)
     job_field_confidence = db.Column(db.Float)
 
     # Base extraction / structured interview details
