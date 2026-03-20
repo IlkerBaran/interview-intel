@@ -4,6 +4,36 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
+class MessageStatus:
+    """
+    Define the allowed message status values in one place to prevent typos.
+    """
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    ARCHIVED = "archived"
+
+
+class TaskPriority:
+    """
+    Define the allowed task priority values in one place to prevent typos.
+    """
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class AgentRunStatus:
+    """
+    Define the allowed agentRun status values in one place to prevent typos.
+    """
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class User(UserMixin, db.Model):
     """
     Represents an application user.
@@ -74,8 +104,8 @@ class Message(db.Model):
     subject = db.Column(db.String(255))
     sender_email = db.Column(db.String(255), index=True)
     raw_text = db.Column(db.Text, nullable=False)
-    status = db.Column(db.String(30), nullable=False, index=True, default="pending")
-    note = db.Column(db.String(400), nullable=True)
+    status = db.Column(db.String(30), nullable=False, index=True, default=MessageStatus.PENDING)
+    note = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
     updated_at = db.Column(
         db.DateTime(timezone=True),
@@ -105,6 +135,25 @@ class Message(db.Model):
         "AgentRun",
         back_populates="message",
         cascade="all, delete-orphan")
+
+
+    def to_dict(self):
+        """
+        Convert the Message object into a dictionary format.
+
+        Used when returning message data as JSON (e.g., API responses or
+        JavaScript fetch calls). Only includes fields relevant for client display.
+        """
+        return {
+            "subject": self.subject,
+            "sender_email": self.sender_email,
+            "status": self.status,
+            "note": self.note,
+            "raw_text": self.raw_text,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
 
     # debugging purpose for this table
     def __repr__(self):
@@ -159,6 +208,47 @@ class AnalysisResult(db.Model):
         "Message",
         back_populates="analysis_result")
 
+
+    def to_dict(self):
+        """
+        Convert the analysis result into grouped dictionary data.
+
+        Separates ML predictions, extracted interview details, LLM-generated
+        outputs, and metadata so the frontend can render each section clearly
+        without mixing unrelated fields together.
+        """
+        return {
+            "predictions": {
+                "message_category": self.message_category,
+                "category_confidence": self.category_confidence,
+                "urgency_level": self.urgency_level,
+                "urgency_confidence": self.urgency_confidence,
+                "job_field": self.job_field,
+                "job_field_confidence": self.job_field_confidence,
+            },
+            "interview_details": {
+                "company_name": self.company_name,
+                "role_title": self.role_title,
+                "interview_stage": self.interview_stage,
+                "interview_format": self.interview_format,
+                "date_text": self.date_text,
+                "time_text": self.time_text,
+                "location_text": self.location_text,
+                "scheduled_at": self.scheduled_at.isoformat() if self.scheduled_at else None,
+            },
+            "llm_outputs": {
+                "preparation_guidance": self.preparation_guidance,
+                "suggested_questions": self.suggested_questions,
+                "reply_suggestions": self.reply_suggestions,
+            },
+            "meta": {
+                "processed_at": self.processed_at.isoformat() if self.processed_at else None,
+                "archive_summary": self.archive_summary,
+                "role_summary": self.role_summary,
+            }
+        }
+
+
     # debugging purpose for this table
     def __repr__(self):
         return f"<AnalysisResult id={self.id} message_id={self.message_id}>"
@@ -182,7 +272,7 @@ class Task(db.Model):
     task_name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     due_date = db.Column(db.DateTime(timezone=True))
-    priority = db.Column(db.String(20), nullable=False, default="medium", index=True)
+    priority = db.Column(db.String(20), nullable=False, default=TaskPriority.MEDIUM, index=True)
     is_completed = db.Column(db.Boolean, nullable=False, index=True, default=False)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
     updated_at = db.Column(
@@ -218,9 +308,10 @@ class AgentRun(db.Model):
     message_id = db.Column(db.Integer, db.ForeignKey("messages.id"), nullable=False)
 
     agent_name = db.Column(db.String(50), nullable=False, default="action_agent")
+    # e.g. ["send_confirmation", "generate_prep_guide"]
     selected_tools = db.Column(db.JSON)
     decision_reason = db.Column(db.Text)
-    status = db.Column(db.String(20), nullable=False, index=True, default="pending")
+    status = db.Column(db.String(20), nullable=False, index=True, default=AgentRunStatus.PENDING)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
     # agent_runs table relations with messages table
