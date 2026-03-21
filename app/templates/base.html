@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f7f2e8">
+    <meta name="description" content="{% block description %}Interview Intel - Organize your Interview Emails{% endblock %}">
+    <title>{% block title %}Interview Intel{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_styles %}{% endblock %}
+</head>
+
+
+<body>
+    {# Navbar link helper → highlights active page and supports section prefix #}
+    {% macro nav_link(endpoint, text, prefix=None) %}
+        <a href="{{ url_for(endpoint) }}"
+           class="{% if request.endpoint and (request.endpoint == endpoint or (prefix and request.endpoint.startswith(prefix))) %}active{% endif %}">
+            {{ text }}
+        </a>
+    {% endmacro %}
+
+    <nav class="navbar">
+        <div class="container nav-container">
+            <a href="{{ url_for('main.home') }}" class="logo">Interview Intel</a>
+
+            <!-- Hamburger button for mobile menu -->
+            <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu">☰</button>
+
+            <div class="nav-right" id="nav-right">
+                <div class="nav-links">
+                    <!-- Public links -->
+                    {{ nav_link("main.home", "Home") }}
+                    {{ nav_link("main.about", "About") }}
+
+                    {% if current_user.is_authenticated %}
+                        <!-- Private links -->
+                        {{ nav_link("dashboard.index", "Dashboard") }}
+                        {{ nav_link("messages.index", "Messages", "messages") }}
+                        {{ nav_link("tasks.show_all_tasks", "Tasks", "tasks") }}
+                    {% else %}
+                        <!-- Auth links -->
+                        {{ nav_link("auth.login", "Login") }}
+                        {{ nav_link("auth.register", "Sign Up") }}
+                    {% endif %}
+                </div>
+
+                {% if current_user.is_authenticated %}
+                    <form method="POST" action="{{ url_for('auth.logout') }}" class="logout-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary">Logout</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Display flash messages (success, error, etc.) from Flask backend -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <section class="flash-wrapper container">
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </section>
+        {% endif %}
+    {% endwith %}
+
+    <main class="container main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
