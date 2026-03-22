@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+
+{% block title %}Interview Intel — Organize Your Interview Emails{% endblock %}
+{% block description %}Stop losing track of interview emails. Interview Intel reads your emails, extracts details, and tells you what to do next.{% endblock %}
+
+{% block extra_styles %}
+<style>
+    /* ── HERO ── */
+    .hero {
+        text-align: center;
+        padding: 80px 0 64px;
+    }
+
+    .hero-tag {
+        display: inline-block;
+        background-color: #e8e0d4;
+        color: #6b5f4f;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        padding: 5px 14px;
+        border-radius: 99px;
+        margin-bottom: 20px;
+    }
+
+    .hero-title {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #1a1208;
+        letter-spacing: -1px;
+        line-height: 1.15;
+        margin: 0 0 18px;
+        max-width: 680px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .hero-title span {
+        color: #8b5e3c;   /* warm accent on key phrase */
+    }
+
+    .hero-subtitle {
+        font-size: 1.1rem;
+        color: #746857;
+        max-width: 520px;
+        margin: 0 auto 36px;
+        line-height: 1.7;
+    }
+
+    .hero-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .btn-hero-primary {
+        background-color: #1a1208;
+        color: #f7f2e8;
+        padding: 12px 28px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: background 0.15s ease, transform 0.1s ease;
+        display: inline-block;
+    }
+
+    .btn-hero-primary:hover {
+        background-color: #2d2010;
+        transform: translateY(-1px);
+    }
+
+    .btn-hero-secondary {
+        background-color: transparent;
+        color: #1a1208;
+        padding: 12px 28px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-decoration: none;
+        border: 1px solid #c4b9aa;
+        transition: background 0.15s ease, transform 0.1s ease;
+        display: inline-block;
+    }
+
+    .btn-hero-secondary:hover {
+        background-color: #ede8e0;
+        transform: translateY(-1px);
+    }
+
+    /* ── DIVIDER ── */
+    .divider {
+        border: none;
+        border-top: 1px solid #e3ddd3;
+        margin: 0;
+    }
+
+    /* ── PAIN SECTION ── */
+    .pain-section {
+        padding: 64px 0;
+        text-align: center;
+    }
+
+    .section-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #8b5e3c;
+        margin-bottom: 12px;
+    }
+
+    .section-title {
+        font-size: 1.9rem;
+        font-weight: 700;
+        color: #1a1208;
+        letter-spacing: -0.5px;
+        margin: 0 0 14px;
+    }
+
+    .section-subtitle {
+        font-size: 1rem;
+        color: #746857;
+        max-width: 500px;
+        margin: 0 auto;
+        line-height: 1.7;
+    }
+
+    /* pain points list */
+    .pain-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 36px;
+    }
+
+    .pain-item {
+        background-color: #ede8e0;
+        border: 1px solid #d9d2c8;
+        border-radius: 8px;
+        padding: 10px 18px;
+        font-size: 0.875rem;
+        color: #4a3f32;
+        font-weight: 500;
+    }
+
+    .pain-item::before {
+        content: '✗ ';
+        color: #b45309;
+        font-weight: 700;
+    }
+
+    /* ── FEATURES SECTION ── */
+    .features-section {
+        padding: 64px 0;
+    }
+
+    .features-header {
+        text-align: center;
+        margin-bottom: 48px;
+    }
+
+    .features-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+
+    .feature-card {
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 12px;
+        padding: 24px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .feature-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(26, 18, 8, 0.07);
+    }
+
+    .feature-icon {
+        font-size: 1.5rem;
+        margin-bottom: 12px;
+        display: block;
+    }
+
+    .feature-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1a1208;
+        margin: 0 0 8px;
+    }
+
+    .feature-desc {
+        font-size: 0.85rem;
+        color: #746857;
+        line-height: 1.6;
+        margin: 0;
+    }
+
+    /* ── HOW IT WORKS ── */
+    .how-section {
+        padding: 64px 0;
+        text-align: center;
+    }
+
+    .steps {
+        display: flex;
+        gap: 0;
+        margin-top: 48px;
+        position: relative;
+    }
+
+    /* connecting line between steps */
+    .steps::before {
+        content: '';
+        position: absolute;
+        top: 28px;
+        left: 15%;
+        right: 15%;
+        height: 1px;
+        background-color: #d9d2c8;
+    }
+
+    .step {
+        flex: 1;
+        text-align: center;
+        padding: 0 16px;
+    }
+
+    .step-number {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background-color: #1a1208;
+        color: #f7f2e8;
+        font-size: 1rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .step-title {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #1a1208;
+        margin: 0 0 6px;
+    }
+
+    .step-desc {
+        font-size: 0.8rem;
+        color: #746857;
+        line-height: 1.6;
+    }
+
+    /* ── CTA SECTION ── */
+    .cta-section {
+        padding: 64px 0 80px;
+        text-align: center;
+    }
+
+    .cta-box {
+        background-color: #1a1208;
+        border-radius: 16px;
+        padding: 56px 40px;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .cta-title {
+        font-size: 1.9rem;
+        font-weight: 700;
+        color: #f7f2e8;
+        letter-spacing: -0.5px;
+        margin: 0 0 12px;
+    }
+
+    .cta-subtitle {
+        font-size: 0.95rem;
+        color: #a89880;
+        margin: 0 0 28px;
+        line-height: 1.6;
+    }
+
+    .btn-cta {
+        background-color: #f7f2e8;
+        color: #1a1208;
+        padding: 12px 32px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        text-decoration: none;
+        display: inline-block;
+        transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-cta:hover {
+        background-color: #ede8e0;
+        transform: translateY(-1px);
+    }
+
+    .cta-login {
+        margin-top: 16px;
+        font-size: 0.85rem;
+        color: #746857;
+    }
+
+    .cta-login a {
+        color: #a89880;
+        text-decoration: underline;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+        .hero-title {
+            font-size: 2rem;
+        }
+
+        .hero-subtitle {
+            font-size: 1rem;
+        }
+
+        .features-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .steps {
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .steps::before {
+            display: none;
+        }
+
+        .cta-box {
+            padding: 36px 24px;
+        }
+
+        .cta-title {
+            font-size: 1.5rem;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .hero {
+            padding: 48px 0 40px;
+        }
+
+        .hero-title {
+            font-size: 1.75rem;
+        }
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+    <!-- ── HERO ── -->
+    <section class="hero">
+        <p class="hero-tag">Built for job seekers</p>
+
+        <h1 class="hero-title">
+            Stop drowning in<br>
+            <span>interview emails</span>
+        </h1>
+
+        <p class="hero-subtitle">
+            Paste any interview email. Interview Intel reads it, extracts the details,
+            tells you what to prepare, and keeps your job search organized — automatically.
+        </p>
+
+        <div class="hero-actions">
+            {% if current_user.is_authenticated %}
+                <a href="{{ url_for('dashboard.index') }}" class="btn-hero-primary">Go to Dashboard</a>
+            {% else %}
+                <a href="{{ url_for('auth.register') }}" class="btn-hero-primary">Get Started Free</a>
+                <a href="{{ url_for('auth.login') }}" class="btn-hero-secondary">Log In</a>
+            {% endif %}
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ── PAIN POINTS ── -->
+    <section class="pain-section">
+        <p class="section-label">Sound familiar?</p>
+        <h2 class="section-title">Job searching is already stressful enough</h2>
+        <p class="section-subtitle">
+            You're applying to dozens of companies. Emails are piling up.
+            Important details are getting lost. Interview Intel fixes that.
+        </p>
+
+        <div class="pain-list">
+            <div class="pain-item">Forgot which company emailed you</div>
+            <div class="pain-item">Missed an interview time buried in your inbox</div>
+            <div class="pain-item">No idea what to prepare for</div>
+            <div class="pain-item">Didn't follow up after an interview</div>
+            <div class="pain-item">Lost track of where you are in each process</div>
+            <div class="pain-item">Applied to so many jobs you can't keep up</div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ── FEATURES ── -->
+    <section class="features-section">
+        <div class="features-header">
+            <p class="section-label">What it does</p>
+            <h2 class="section-title">Everything you need, nothing you don't</h2>
+        </div>
+
+        <div class="features-grid">
+
+            <div class="feature-card">
+                <span class="feature-icon">🧠</span>
+                <h3 class="feature-title">Classifies urgency automatically</h3>
+                <p class="feature-desc">
+                    ML model reads your email and flags what needs attention first —
+                    so you never miss a tight deadline hidden in your inbox.
+                </p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">📋</span>
+                <h3 class="feature-title">Extracts interview details</h3>
+                <p class="feature-desc">
+                    Company name, role, date, time, format, location —
+                    pulled out automatically. No more re-reading emails to find the time.
+                </p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">📚</span>
+                <h3 class="feature-title">Generates prep guidance</h3>
+                <p class="feature-desc">
+                    Based on the role and company, get a tailored list of
+                    what to study and review before your interview.
+                </p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">💬</span>
+                <h3 class="feature-title">Suggests questions to ask</h3>
+                <p class="feature-desc">
+                    Never go blank when they say "do you have any questions?"
+                    Get smart, role-specific questions ready before you walk in.
+                </p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">✅</span>
+                <h3 class="feature-title">Generates tasks automatically</h3>
+                <p class="feature-desc">
+                    Confirm the interview, research the company, send a follow-up —
+                    tasks are created for you so nothing falls through the cracks.
+                </p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">🗂️</span>
+                <h3 class="feature-title">Keeps your pipeline organized</h3>
+                <p class="feature-desc">
+                    Archive completed interviews, track active opportunities,
+                    and see your full job search history in one clean place.
+                </p>
+            </div>
+
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ── HOW IT WORKS ── -->
+    <section class="how-section">
+        <p class="section-label">How it works</p>
+        <h2 class="section-title">Three steps, that's it</h2>
+
+        <div class="steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <p class="step-title">Paste your email</p>
+                <p class="step-desc">Copy any interview-related email and paste it into Interview Intel</p>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <p class="step-title">We analyze it</p>
+                <p class="step-desc">ML and AI extract details, classify urgency, and generate guidance</p>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <p class="step-title">You prepare better</p>
+                <p class="step-desc">Get your prep list, questions, and tasks — ready to ace the interview</p>
+            </div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ── CTA ── -->
+    <section class="cta-section">
+        <div class="cta-box">
+            <h2 class="cta-title">Ready to take control of your job search?</h2>
+            <p class="cta-subtitle">
+                Free to use. No credit card. Just paste your first email and see what happens.
+            </p>
+            {% if current_user.is_authenticated %}
+                <a href="{{ url_for('messages.new_message') }}" class="btn-cta">Analyze an Email</a>
+            {% else %}
+                <a href="{{ url_for('auth.register') }}" class="btn-cta">Create Free Account</a>
+                <p class="cta-login">Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
+            {% endif %}
+        </div>
+    </section>
+
+{% endblock %}
