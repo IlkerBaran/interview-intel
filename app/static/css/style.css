@@ -128,6 +128,16 @@ body {
     outline-offset: 2px;
 }
 
+/* override browser default blue focus ring */
+*:focus {
+    outline: none;
+}
+
+*:focus-visible {
+    outline: 2px solid #8b5e3c;
+    outline-offset: 2px;
+}
+
 .btn:hover {
     transform: translateY(-1px);
 }
@@ -338,6 +348,16 @@ body {
     font-size: 0.875rem;
 }
 
+/* BUILDER AVATAR */
+.builder-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid #ebe5db;
+}
+
 /*  MOBILE */
 @media (max-width: 768px) {
 
@@ -399,4 +419,10 @@ body {
     .page-title {
         font-size: 1.25rem;
     }
+}
+
+/* ===== FORMS ===== */
+.input-error {
+    border-color: #dc2626;
+    background: #fef2f2;
 }
