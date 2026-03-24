@@ -43,7 +43,7 @@
                         {{ nav_link("tasks.show_all_tasks", "Tasks", "tasks") }}
                     {% else %}
                         <!-- Auth links -->
-                        {{ nav_link("auth.login", "Login") }}
+                        {{ nav_link("auth.login", "Sign In") }}
                         {{ nav_link("auth.register", "Sign Up") }}
                     {% endif %}
                 </div>
@@ -51,7 +51,7 @@
                 {% if current_user.is_authenticated %}
                     <form method="POST" action="{{ url_for('auth.logout') }}" class="logout-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="btn btn-secondary">Logout</button>
+                        <button type="submit" class="btn btn-secondary">Sign Out</button>
                     </form>
                 {% endif %}
             </div>

@@ -35,7 +35,7 @@ class RegisterForm(FlaskForm):
         render_kw={"placeholder": "Re-enter your password"},
     )
 
-    submit = SubmitField("Register")
+    submit = SubmitField("Sign Up")
 
     def validate_email(self, email):
         """Normalize email and prevent duplicate registration."""
@@ -72,7 +72,7 @@ class LoginForm(FlaskForm):
 
     remember_me = BooleanField("Remember me")
 
-    submit = SubmitField("Login")
+    submit = SubmitField("Sign In")
 
     def validate_email(self, email):
         """Normalize email input for login."""
