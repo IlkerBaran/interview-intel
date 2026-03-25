@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}Log In — Interview Intel{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .auth-wrapper {
+        min-height: calc(100vh - 68px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 0;
+    }
+
+    .auth-card {
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 16px;
+        padding: 40px;
+        width: 100%;
+        max-width: 420px;
+        box-shadow: 0 4px 24px rgba(26, 18, 8, 0.06);
+    }
+
+    .auth-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #1a1208;
+        letter-spacing: -0.4px;
+        margin: 0 0 6px;
+    }
+
+    .auth-subtitle {
+        font-size: 0.875rem;
+        color: #746857;
+        margin: 0 0 28px;
+    }
+
+    .auth-subtitle a {
+        color: #8b5e3c;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .auth-subtitle a:hover {
+        text-decoration: underline;
+    }
+
+    /* form fields */
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #4a3f32;
+        margin-bottom: 6px;
+        letter-spacing: 0.2px;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid #d9d2c8;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-family: 'Inter', sans-serif;
+        color: #1a1208;
+        background: #f7f2e8;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        outline: none;
+    }
+
+    .form-input:focus {
+        border-color: #8b5e3c;
+        box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.1);
+        background: #fffcf5;
+    }
+
+    .form-input::placeholder {
+        color: #b0a090;
+    }
+
+    /* field errors */
+    .field-errors {
+        margin-top: 6px;
+    }
+
+    .field-error {
+        font-size: 0.78rem;
+        color: #dc2626;
+        display: block;
+        margin-top: 4px;
+    }
+
+    /* prevent text from overlapping toggle button */
+    .input-wrapper .form-input {
+        padding-right: 56px;
+    }
+
+    /* password input toggle (show/hide button inside input) */
+    .input-wrapper {
+        position: relative;
+    }
+
+    .password-toggle {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #a89880;
+        font-size: 0.8rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        padding: 0;
+        transition: color 0.15s ease;
+    }
+
+    .password-toggle:hover {
+        color: #4a3f32;
+    }
+
+    /* submit button */
+    .btn-auth {
+        width: 100%;
+        padding: 11px;
+        background-color: #1a1208;
+        color: #f7f2e8;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        cursor: pointer;
+        margin-top: 8px;
+        transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-auth:hover {
+        background-color: #2d2010;
+        transform: translateY(-1px);
+    }
+
+    .btn-auth:active {
+        transform: translateY(0);
+    }
+
+    .auth-divider {
+        border: none;
+        border-top: 1px solid #e3ddd3;
+        margin: 24px 0;
+    }
+
+    .auth-footer {
+        text-align: center;
+        font-size: 0.825rem;
+        color: #746857;
+    }
+
+    .auth-footer a {
+        color: #8b5e3c;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .auth-footer a:hover {
+        text-decoration: underline;
+    }
+
+    @media (max-width: 480px) {
+        .auth-card {
+            padding: 28px 20px;
+        }
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card">
+
+        <h1 class="auth-title">Welcome back</h1>
+        <p class="auth-subtitle">
+            Don't have an account? <a href="{{ url_for('auth.register') }}">Sign up for free</a>
+        </p>
+
+        <form method="POST" action="{{ url_for('auth.login') }}" novalidate>
+            {{ form.hidden_tag() }}
+
+            <!-- Email -->
+            <div class="form-group">
+                {{ form.email.label(class="form-label") }}
+
+                {{ form.email(
+                    class="form-input" + (" input-error" if form.email.errors else ""),
+                    placeholder="email@example.com",
+                    autocomplete="email"
+                ) }}
+
+                <div class="field-errors">
+                    {% for error in form.email.errors %}
+                        <span class="field-error">{{ error }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Password -->
+            <div class="form-group">
+                {{ form.password.label(class="form-label") }}
+
+                <div class="input-wrapper">
+                    {{ form.password(
+                        class="form-input" + (" input-error" if form.password.errors else ""),
+                        placeholder="Enter your password",
+                        autocomplete="current-password"
+                    ) }}
+                    <button type="button" class="password-toggle">Show</button>
+                </div>
+
+                <div class="field-errors">
+                    {% for error in form.password.errors %}
+                        <span class="field-error">{{ error }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {{ form.submit(class="btn-auth") }}
+        </form>
+
+        <hr class="auth-divider">
+
+        <p class="auth-footer">
+            By continuing you agree to our
+            <a href="#">Terms</a> and <a href="#">Privacy Policy</a>
+        </p>
+
+    </div>
+</div>
+{% endblock %}
