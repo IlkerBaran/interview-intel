@@ -26,3 +26,11 @@ __pycache__/
 
 # Logs
 *.log
+
+# This folder stores generated datasets, not source code
+ml/models/*.pkl
+ml/data/*
+
+# keep the folder for convenience
+!ml/models/.gitkeep
+!ml/data/.gitkeep
