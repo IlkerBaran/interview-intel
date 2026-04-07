@@ -1,11 +1,14 @@
 import os
+import logging
 
 from flask import Flask
 from .extensions import db, migrate, login_manager
 from .routes import register_blueprints
 from .models import User, Message, Task, AnalysisResult
+from .services.ml_service import ml_service
 from config import config_by_name
 
+logger = logging.getLogger(__name__)
 
 def create_app():
     """
@@ -62,6 +65,16 @@ def create_app():
             "AnalysisResult": AnalysisResult,
         }
 
+    # ≈≈≈≈ load Ml models once at startup ≈≈≈≈
+    with app.app_context():
+        try:
+            ml_service.load()
+        except FileNotFoundError:
+            logger.warning("ML models not found — run: python ml/train.py")
+
+        # unknown error
+        except Exception:
+            logger.exception("ML models failed to load")
 
     # register the blueprints
     register_blueprints(app)
