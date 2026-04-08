@@ -46,6 +46,10 @@ class Config:
     SQLALCHEMY_DATABASE_URI = db_url or f"sqlite:///{BASE_DIR / 'data.sqlite'}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # ≈≈≈≈ LLM config ≈≈≈≈
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    LLM_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
@@ -69,6 +73,10 @@ class ProductionConfig(Config):
     SECRET_KEY = os.getenv("SECRET_KEY")
     if not SECRET_KEY:
         raise ValueError("SECRET_KEY must be set in environment")
+
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    if not ANTHROPIC_API_KEY:
+        raise ValueError("ANTHROPIC_API_KEY must be set in environment")
 
 
 config_by_name = {

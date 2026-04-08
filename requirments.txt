@@ -29,3 +29,4 @@ scikit-learn
 pandas
 numpy
 joblib
+anthropic==0.91.0
