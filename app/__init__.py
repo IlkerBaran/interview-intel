@@ -6,6 +6,7 @@ from .extensions import db, migrate, login_manager
 from .routes import register_blueprints
 from .models import User, Message, Task, AnalysisResult
 from .services.ml_service import ml_service
+from .services.llm_service import llm_service
 from config import config_by_name
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,8 @@ def create_app():
             "Message": Message,
             "Task": Task,
             "AnalysisResult": AnalysisResult,
+            "ml_service": ml_service,
+            "llm_service": llm_service
         }
 
     # ≈≈≈≈ load Ml models once at startup ≈≈≈≈
@@ -72,9 +75,20 @@ def create_app():
         except FileNotFoundError:
             logger.warning("ML models not found — run: python ml/train.py")
 
-        # unknown error
+        # unknown ml load error
         except Exception:
             logger.exception("ML models failed to load")
+
+        # ≈≈≈≈ load LLM service once at startup ≈≈≈≈
+        try:
+            llm_service.load()
+        except ValueError as e:
+            logger.warning("LLM service not initialized: %s", e)
+
+        # unknown llm load error
+        except Exception:
+            logger.exception("LLM service failed to load")
+
 
     # register the blueprints
     register_blueprints(app)
