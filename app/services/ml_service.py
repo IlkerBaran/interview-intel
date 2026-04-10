@@ -1,3 +1,4 @@
+import numpy as np
 import re
 import logging
 import joblib
@@ -143,14 +144,13 @@ class MlService:
     def _get_svc_confidence(self, model, text):
         """
         Get confidence proxy from LinearSVC using decision_function.
-        LinearSVC does not support predict_proba.
-        Normalizes scores to 0-1 range.
-        Returns rounded float.
+        Uses softmax-style normalization over positive scores only.
         """
-        scores = model.decision_function([text])[0]
-        max_score = float(max(scores))
-        total = float(sum(abs(s) for s in scores))
-        confidence = max_score / (total + 1e-9) # prevent the ZeroDivisionError
+
+        scores  = model.decision_function([text])[0]
+        # softmax normalization — much more meaningful than raw division
+        exp_scores  = np.exp(scores - np.max(scores))  # subtract max for stability
+        confidence  = float(exp_scores.max() / exp_scores.sum())
         return round(confidence, 3)
 
     def _empty_result(self):
