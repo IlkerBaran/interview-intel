@@ -193,6 +193,7 @@ class AnalysisResult(db.Model):
     date_text = db.Column(db.String(100))
     time_text = db.Column(db.String(100))
     location_text = db.Column(db.String(255))
+    detected_language = db.Column(db.String(15), nullable=True, index=True)
     scheduled_at = db.Column(db.DateTime(timezone=True))
     processed_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
