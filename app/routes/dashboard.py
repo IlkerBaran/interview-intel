@@ -1,9 +1,10 @@
-from flask import Blueprint, render_template
-from flask_login import login_required, current_user
 from sqlalchemy import func
 
-from app.models import Message, Task, MessageStatus
+from flask import Blueprint, render_template
+from flask_login import login_required, current_user
+
 from app.extensions import db
+from app.models import Message, Task, MessageStatus
 
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
@@ -17,8 +18,25 @@ def index():
     Shows user-specific messages, tasks, and summary counts.
     """
 
+    # ── total messages (all time) ──
+    total_messages = db.session.execute(
+        db.select(func.count(Message.id))
+        .where(Message.user_id == current_user.id)
+    ).scalar() or 0
+
+    # ── active messages (not archived) ──
+    active_messages = db.session.execute(
+        db.select(func.count(Message.id))
+        .where(
+            Message.user_id == current_user.id,
+            Message.status != MessageStatus.ARCHIVED
+        )
+    ).scalar() or 0
+
+    # ── recent messages list ──
     recent_messages = db.session.execute(
-        db.select(Message).where(
+        db.select(Message)
+        .where(
             Message.user_id == current_user.id,
             Message.status != MessageStatus.ARCHIVED
         )
@@ -26,17 +44,7 @@ def index():
         .limit(5)
     ).scalars().all()
 
-
-    recent_tasks = db.session.execute(
-        db.select(Task).join(Message).where(
-            Message.user_id == current_user.id,
-            Message.status != MessageStatus.ARCHIVED
-        )
-        .order_by(Task.created_at.desc())
-        .limit(5)
-    ).scalars().all()
-
-
+    # ── task counts (one query) ──
     task_counts = db.session.execute(
         db.select(
             func.count().filter(Task.is_completed.is_(True)).label("completed"),
@@ -50,29 +58,28 @@ def index():
         )
     ).one()
 
+    completed_tasks  = task_counts.completed
+    incomplete_tasks = task_counts.incomplete
 
-    completed_task_counts = task_counts.completed
-    incomplete_task_counts = task_counts.incomplete
-    total_tasks = task_counts.completed + task_counts.incomplete
-
-
-    incomplete_tasks = db.session.execute(
-        db.select(Task).join(Message).where(
+    # ── incomplete tasks list (for display) ──
+    incomplete_tasks_list = db.session.execute(
+        db.select(Task)
+        .join(Message)
+        .where(
             Message.user_id == current_user.id,
             Message.status != MessageStatus.ARCHIVED,
             Task.is_completed.is_(False)
         )
         .order_by(Task.created_at.desc())
-        .limit(10)
+        .limit(8)
     ).scalars().all()
-
 
     return render_template(
         "dashboard/index.html",
+        total_messages=total_messages,
+        active_messages=active_messages,
         recent_messages=recent_messages,
-        recent_tasks=recent_tasks,
-        total_tasks=total_tasks,
-        completed_task_count=completed_task_counts,
-        incomplete_task_count=incomplete_task_counts,
-        incomplete_tasks=incomplete_tasks
+        incomplete_tasks_list=incomplete_tasks_list,
+        completed_tasks=completed_tasks,
+        incomplete_tasks=incomplete_tasks,
     )

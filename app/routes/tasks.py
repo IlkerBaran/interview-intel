@@ -98,7 +98,9 @@ def toggle_task(task_id):
         logger.exception("Error while toggling task status")
         flash("Something went wrong while updating the task!", "danger")
 
-    return safe_redirect()
+    # redirect to next if provided, otherwise task list
+    next_page = request.args.get("next")
+    return redirect(next_page or url_for("tasks.show_all_tasks"))
 
 
 @tasks_bp.route("/<int:task_id>/delete", methods=["POST"])

@@ -2,7 +2,7 @@ import os
 import logging
 
 from flask import Flask
-from .extensions import db, migrate, login_manager
+from .extensions import db, migrate, login_manager, csrf
 from .routes import register_blueprints
 from .models import User, Message, Task, AnalysisResult
 from .services.ml_service import ml_service
@@ -36,6 +36,7 @@ def create_app():
     db.init_app(app)             # db connection to app
     migrate.init_app(app, db)    # migrate connection to app and db
     login_manager.init_app(app)  # login_manager connection to app
+    csrf.init_app(app)           # csrf_token() calls
 
 
     # authentication config
