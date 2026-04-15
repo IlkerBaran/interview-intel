@@ -4,6 +4,21 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
+class ApplicationStatus:
+    SAVED = 'SAVED'
+    APPLIED = 'APPLIED'
+    RESPONDED = 'RESPONDED'
+    INTERVIEWING = 'INTERVIEWING'
+    OFFERED = 'OFFERED'
+    REJECTED = 'REJECTED'
+
+class NotificationType:
+    INTERVIEW_DETECTED = 'INTERVIEW_DETECTED'
+    OFFER_DETECTED = 'OFFER_DETECTED'
+    TASK_DUE = 'TASK_DUE'
+    APPLICATION_UPDATED = 'APPLICATION_UPDATED'
+
+
 class MessageStatus:
     """
     Define the allowed message status values in one place to prevent typos.
@@ -48,6 +63,9 @@ class User(UserMixin, db.Model):
 
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
+    is_verified = db.Column(db.Boolean, default=False, nullable=False)
+    verification_token = db.Column(db.String(100), nullable=True)
+    token_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
 
     # Prevents direct access to the password attribute.
@@ -75,15 +93,85 @@ class User(UserMixin, db.Model):
     )
 
     # users table relations with other tables
+    job_applications = db.relationship(
+        'JobApplication',
+        back_populates='user',
+        lazy='select',
+        cascade='all, delete-orphan'
+    )
+
     messages = db.relationship(
         "Message",
         back_populates="user",
         cascade="all, delete-orphan"
     )
 
+    notifications = db.relationship(
+        'Notification',
+        back_populates='user',
+        lazy='select',
+        cascade='all, delete-orphan'
+    )
+
     # debugging
     def __repr__(self):
         return f"<User id={self.id} email={self.email}>"
+
+
+class JobApplication(db.Model):
+    """
+    Represents a job application tracked by the user.
+
+    This is the central anchor of the application tracking system.
+    Every email analyzed by Interview Intel can be linked back to
+    a JobApplication, connecting the full story of one application
+    in one place.
+
+    Relationships:
+        - belongs to User (many-to-one)
+        - has many Messages (one-to-many) via auto-link or manual assignment
+
+    Status flow:
+        SAVED → APPLIED → RESPONDED → INTERVIEWING → OFFERED / REJECTED
+    """
+
+    __tablename__ = 'job_applications'
+
+    # Data columns
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+
+    company = db.Column(db.String(150), nullable=False, index=True)
+    role = db.Column(db.String(150), nullable=False)
+    job_field = db.Column(db.String(100), nullable=True)
+    source = db.Column(db.String(100), nullable=True)
+    posting_url = db.Column(db.String(500), nullable=True)
+    status = db.Column(db.String(50), nullable=False, default=ApplicationStatus.SAVED, index=True)
+    applied_date = db.Column(db.Date, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC)
+    )
+
+    user = db.relationship(
+        'User',
+        back_populates='job_applications'
+    )
+
+    messages = db.relationship(
+        'Message',
+        back_populates='job_application',
+        lazy='select'
+    )
+
+    # debugging purpose for this table
+    def __repr__(self):
+        return f'<JobApplication {self.company} - {self.role}>'
 
 
 class Message(db.Model):
@@ -100,6 +188,7 @@ class Message(db.Model):
     # Data columns
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    job_application_id = db.Column(db.Integer, db.ForeignKey('job_applications.id'), nullable=True, index=True)
 
     subject = db.Column(db.String(255))
     sender_email = db.Column(db.String(255), index=True)
@@ -118,6 +207,11 @@ class Message(db.Model):
     user = db.relationship(
         "User",
         back_populates="messages",
+    )
+
+    job_application = db.relationship(
+        'JobApplication',
+        back_populates='messages'
     )
 
     analysis_result = db.relationship(
@@ -158,6 +252,43 @@ class Message(db.Model):
     # debugging purpose for this table
     def __repr__(self):
         return f"<Message id={self.id} status={self.status}>"
+
+
+class Notification(db.Model):
+    """
+    Represents an in-app notification for the user.
+
+    Notifications are created automatically by the workflow service
+    when significant events are detected — such as an interview
+    invitation or offer being identified in an analyzed email.
+
+    Status flow:
+        created (is_read=False) → read (is_read=True)
+
+    Relationships:
+        - belongs to User (many-to-one)
+    """
+
+    __tablename__ = 'notifications'
+
+    # data columns
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+
+    message = db.Column(db.String(300), nullable=False)
+    notification_type = db.Column(db.String(50), nullable=False, index=True)
+    is_read = db.Column(db.Boolean, nullable=False, default=False)
+
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+
+    user = db.relationship(
+        'User',
+        back_populates='notifications'
+    )
+
+    # debugging purpose for this table
+    def __repr__(self):
+        return f'<Notification {self.type} - read={self.is_read}>'
 
 
 class AnalysisResult(db.Model):
