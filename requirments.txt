@@ -31,3 +31,4 @@ numpy
 joblib
 anthropic==0.91.0
 email-validator
+resend
