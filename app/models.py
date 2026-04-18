@@ -64,7 +64,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     is_verified = db.Column(db.Boolean, default=False, nullable=False)
-    verification_token = db.Column(db.String(100), nullable=True)
+    verification_token = db.Column(db.String(100), nullable=True, index=True, unique=True)
     token_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
 
