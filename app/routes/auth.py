@@ -24,6 +24,52 @@ def register():
 
     if form.validate_on_submit():
 
+        # check if user email already registered
+        existing_user = db.session.execute(
+            db.select(User).where(
+                User.email == form.email.data
+            )
+        ).scalar_one_or_none()
+
+        if existing_user:
+            if not existing_user.is_verified:
+                token = generate_verification_token(existing_user)
+
+                try:
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                    logger.exception("Failed to regenerate token for unverified user=%s", existing_user.email)
+                    flash("Something went wrong. Please try again.", "danger")
+                    return redirect(url_for("auth.register"))
+
+                confirmation_url = url_for(
+                    "auth.verify_email",
+                    token=token,
+                    _external=True
+                )
+
+                queue_email(
+                    to=existing_user.email,
+                    subject="Confirm your Interview Intel account",
+                    html=render_template(
+                        "email/confirmation.html",
+                        confirmation_url=confirmation_url
+                    ),
+                    plain=f"Confirm your email by visiting: {confirmation_url}"
+                )
+
+                flash(
+                    "This email is already registered but not verified. "
+                    "We sent you a new confirmation link.",
+                    "info"
+                )
+            else:
+                flash("This email is already registered. Please log in.", "warning")
+
+            return redirect(url_for("auth.login"))
+
+        # new user
         user = User()
         user.email = form.email.data
         user.password = form.password.data

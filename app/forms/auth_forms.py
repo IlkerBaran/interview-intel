@@ -47,7 +47,7 @@ class RegisterForm(FlaskForm):
             )
         ).scalar_one_or_none()
 
-        if existing_user:
+        if existing_user and existing_user.is_verified:
             raise ValidationError("Email is already registered.")
 
 
