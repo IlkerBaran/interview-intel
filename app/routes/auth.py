@@ -7,6 +7,9 @@ from flask_login import login_user, logout_user, current_user, login_required
 from app.extensions import db
 from app.forms.auth_forms import RegisterForm, LoginForm
 from app.models import User
+from app.services.auth_service import verify_email_token
+from app.services.auth_service import generate_verification_token
+from app.services.email_service import queue_email
 
 logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
@@ -25,10 +28,34 @@ def register():
         user.email = form.email.data
         user.password = form.password.data
 
-        db.session.add(user)
-        db.session.commit()
+        token = generate_verification_token(user)
 
-        flash("Your account has been created successfully. Please log in.", "success")
+        try:
+            db.session.add(user)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.exception("Failed to commit new user registration for email=%s", form.email.data)
+            flash("Something went wrong. Please try again.", "danger")
+            return redirect(url_for("auth.register"))
+
+        confirmation_url = url_for(
+            "auth.verify_email",
+            token=token,
+            _external=True
+        )
+
+        queue_email(
+            to=user.email,
+            subject="Confirm your Interview Intel account",
+            html=render_template(
+                "email/confirmation.html",
+                confirmation_url=confirmation_url
+            ),
+            plain=f"Confirm your email by visiting: {confirmation_url}"
+        )
+
+        flash("Account created — please check your email to confirm your address.", "info")
         return redirect(url_for("auth.login"))
 
     return render_template("auth/register.html", form=form)
@@ -98,4 +125,41 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
+@auth_bp.route('/verify/<token>')
+def verify_email(token):
+    """
+    Handle email verification link clicks.
 
+    Verifies the token, marks user as verified on success,
+    and redirects with appropriate flash message to "auth.login".
+    """
+    success, message = verify_email_token(token)
+
+    if success:
+        try:
+            db.session.commit()
+            flash(message, "success")
+            logger.info("Email verification commited successfully")
+        except Exception:
+            db.session.rollback()
+            logger.exception("Failed to commit email verification")
+            flash("Verification failed. Please try again.", "danger")
+            return redirect(url_for("auth.login"))
+    else:
+        flash(message, "danger")
+
+    return redirect(url_for("auth.login"))
+
+
+@auth_bp.route("/unverified")
+@login_required
+def unverified_email():
+    """
+    Landing page for users who have not yet verified their email.
+
+    Shows verification status and resend option.
+    Already verified users are redirected to dashboard.
+    """
+    if current_user.is_verified:
+        return redirect(url_for('dashboard.index'))
+    return render_template('auth/unverified.html')
