@@ -5,13 +5,14 @@ from flask_login import login_required, current_user
 
 from app.extensions import db
 from app.models import Message, Task, MessageStatus
-
+from app.utils import verified_required
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
 
 @dashboard_bp.route("/", methods=["GET"])
 @login_required
+@verified_required
 def index():
     """
     Display the dashboard for the logged-in user.

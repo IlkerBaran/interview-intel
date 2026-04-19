@@ -6,7 +6,7 @@ from flask_login import login_required, current_user
 
 from app.extensions import db
 from app.models import Task, Message, MessageStatus
-
+from app.utils import verified_required
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ def safe_redirect(default_endpoint="tasks.show_all_tasks"):
 
 @tasks_bp.route("/", methods=["GET"])
 @login_required
+@verified_required
 def show_all_tasks():
     """
     Display all tasks that belong to the logged-in user,
@@ -68,6 +69,7 @@ def show_all_tasks():
 
 @tasks_bp.route("/<int:task_id>", methods=["GET"])
 @login_required
+@verified_required
 def show_single_task(task_id):
     """
     Display a single task if it belongs to the logged-in user
@@ -80,6 +82,7 @@ def show_single_task(task_id):
 
 @tasks_bp.route("/<int:task_id>/toggle", methods=["POST"])
 @login_required
+@verified_required
 def toggle_task(task_id):
     """
     Toggle task between completed/incomplete if it belongs to the logged-in user
@@ -105,6 +108,7 @@ def toggle_task(task_id):
 
 @tasks_bp.route("/<int:task_id>/delete", methods=["POST"])
 @login_required
+@verified_required
 def delete_task(task_id):
     """
     Delete a task if it belongs to the logged-in user.
