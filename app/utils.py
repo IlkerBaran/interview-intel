@@ -16,7 +16,7 @@ def verified_required(f):
         def example_route():
             ...
     """
-    wraps(f)
+    @wraps(f)
     def decorated_func(*args, **kwargs):
         if not current_user.is_verified:
             flash(
