@@ -66,6 +66,8 @@ class User(UserMixin, db.Model):
     is_verified = db.Column(db.Boolean, default=False, nullable=False)
     verification_token = db.Column(db.String(100), nullable=True, index=True, unique=True)
     token_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    password_reset_token = db.Column(db.String(100), nullable=True, index=True, unique=True)
+    password_reset_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
 
     # Prevents direct access to the password attribute.
