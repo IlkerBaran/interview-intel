@@ -54,6 +54,10 @@ class Config:
     RESEND_API_KEY = os.getenv("RESEND_API_KEY")
     MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER")
 
+    # ≈≈≈≈ Email and Password expiry hours config ≈≈≈≈
+    EMAIL_VERIFICATION_TOKEN_EXPIRY_HOURS = 24
+    PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 1
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

@@ -39,7 +39,7 @@ def generate_verification_token(user: User) -> str:
     """
     Generate a secure email verification token for the given user.
     """
-    expiry_hours = current_app.config.get("VERIFICATION_TOKEN_EXPIRY_HOURS", 24)
+    expiry_hours = current_app.config.get("EMAIL_VERIFICATION_TOKEN_EXPIRY_HOURS", 24)
     raw_token = secrets.token_urlsafe(32) # 256 bits
 
 
