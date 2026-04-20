@@ -209,3 +209,48 @@ def unverified_email():
     if current_user.is_verified:
         return redirect(url_for('dashboard.index'))
     return render_template('auth/unverified.html')
+
+
+@auth_bp.route("/resend-verification", methods=["POST"])
+@login_required
+def resend_verification():
+    """
+    Resend the email verification link to the current user.
+
+    Only accessible to logged-in unverified users.
+    Verified users are redirected to dashboard silently.
+    """
+    if current_user.is_verified:
+        return redirect(url_for("dashboard.index"))
+
+    token = generate_verification_token(current_user)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception(
+            "Failed to regenerate verification token for user=%s",
+            current_user.email
+        )
+        flash("Something went wrong. Please try again.", "danger")
+        return redirect(url_for("auth.unverified"))
+
+    confirmation_url = url_for(
+        "auth.verify_email",
+        token=token,
+        _external=True
+    )
+
+    queue_email(
+        to=current_user.email,
+        subject="Confirm your Interview Intel account",
+        html=render_template(
+            "email/confirmation.html",
+            confirmation_url=confirmation_url
+        ),
+        plain=f"Confirm your email by visiting: {confirmation_url}"
+    )
+
+    flash("Confirmation email sent. Please check your inbox.", "info")
+    return redirect(url_for("auth.unverified"))
