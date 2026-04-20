@@ -26,6 +26,19 @@ from app.models import User
 logger = logging.getLogger(__name__)
 
 
+def _ensure_aware(dt) -> datetime:
+    """
+    Ensure a datetime is timezone-aware.
+    SQLite returns naive datetimes — this attaches UTC if missing.
+    Works correctly with PostgreSQL which returns aware datetimes.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 def _hash_token(token: str) -> str:
     """
     Return the SHA-256 hex digest of a token.
@@ -81,7 +94,7 @@ def verify_email_token(token: str) -> tuple[bool, str]:
         return False, "Invalid or already used verification link."
 
     # Token is missing expiry or is expired
-    if not user.token_expires_at or datetime.now(UTC) > user.token_expires_at:
+    if not user.token_expires_at or datetime.now(UTC) > _ensure_aware(user.token_expires_at):
         logger.warning(
             "verify_email_token: expired or missing expiry for user_id=%s expires_at=%s",
             user.id, user.token_expires_at
@@ -140,7 +153,7 @@ def verify_password_reset_token(token: str) -> tuple[bool, str, User | None]:
         logger.warning("verify_password_reset_token: no user found for provided token")
         return False, "Invalid or already used password reset link.", None
 
-    if not user.password_reset_expires_at or datetime.now(UTC) > user.password_reset_expires_at:
+    if not user.password_reset_expires_at or datetime.now(UTC) > _ensure_aware(user.password_reset_expires_at):
         logger.warning(
             "verify_password_reset_token: expired token for user_id=%s expires_at=%s",
             user.id, user.password_reset_expires_at
