@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if message.note %}Edit Note{% else %}Add Note{% endif %}
+    — Interview Intel
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .note-header {
+        margin-bottom: 24px;
+    }
+
+    .breadcrumb {
+        font-size: 0.8rem;
+        color: #a89880;
+        margin-bottom: 8px;
+    }
+
+    .breadcrumb a {
+        color: #8b5e3c;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .breadcrumb a:hover {
+        text-decoration: underline;
+    }
+
+    .form-card {
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 12px;
+        padding: 28px 32px;
+        max-width: 640px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #4a3f32;
+        margin-bottom: 6px;
+        letter-spacing: 0.2px;
+    }
+
+    .form-textarea {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid #d9d2c8;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-family: 'Inter', sans-serif;
+        color: #1a1208;
+        background: #f7f2e8;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        outline: none;
+        resize: vertical;
+        min-height: 140px;
+        box-sizing: border-box;
+    }
+
+    .form-textarea:focus {
+        border-color: #8b5e3c;
+        box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.1);
+        background: #fffcf5;
+    }
+
+    .form-textarea::placeholder {
+        color: #b0a090;
+    }
+
+    .char-count-wrapper {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 6px;
+    }
+
+    .char-count {
+        font-size: 0.75rem;
+        color: #a89880;
+        transition: color 0.15s ease;
+    }
+
+    .char-count.warn {
+        color: #ea580c;
+    }
+
+    .field-errors {
+        margin-top: 6px;
+    }
+
+    .field-error {
+        font-size: 0.78rem;
+        color: #dc2626;
+        display: block;
+        margin-top: 4px;
+    }
+
+    .form-footer {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-top: 16px;
+        border-top: 1px solid #e8e2d9;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 18px;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+
+    .btn-primary { background: #1a1208; color: #f7f2e8; }
+    .btn-primary:hover { background: #2d2010; }
+
+    .btn-ghost {
+        background: transparent;
+        color: #746857;
+        border: 1px solid #e8e2d9;
+    }
+
+    .btn-ghost:hover { background: #f7f2e8; }
+
+    /* context card — shows which message this note is for */
+    .context-card {
+        background: #f7f2e8;
+        border: 1px solid #e3ddd3;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+        font-size: 0.8rem;
+        color: #746857;
+    }
+
+    .context-card strong {
+        color: #1a1208;
+        font-weight: 600;
+    }
+
+    @media (max-width: 768px) {
+        .form-card {
+            padding: 20px 16px;
+        }
+
+        .form-footer {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .btn {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+    <!-- ── BREADCRUMB ── -->
+    <div class="note-header">
+        <p class="breadcrumb">
+            <a href="{{ url_for('messages.index') }}">Inbox</a>
+            →
+            <a href="{{ url_for('messages.show_message', message_id=message.id) }}">
+                {% if message.analysis_result and message.analysis_result.role_title %}
+                    {{ message.analysis_result.role_title }}
+                    {% if message.analysis_result.company_name %}
+                        — {{ message.analysis_result.company_name }}
+                    {% endif %}
+                {% elif message.subject %}
+                    {{ message.subject }}
+                {% else %}
+                    Email
+                {% endif %}
+            </a>
+            → {% if message.note %}Edit Note{% else %}Add Note{% endif %}
+        </p>
+
+        <h1 class="page-title">
+            {% if message.note %}Edit Note{% else %}Add a Note{% endif %}
+        </h1>
+        <p class="page-subtitle">
+            Personal notes are only visible to you.
+        </p>
+    </div>
+
+    <div class="form-card">
+
+        <!-- context: which email this note is for -->
+        <div class="context-card">
+            <strong>Email:</strong>
+            {% if message.analysis_result and message.analysis_result.role_title %}
+                {{ message.analysis_result.role_title }}
+                {% if message.analysis_result.company_name %}
+                    at {{ message.analysis_result.company_name }}
+                {% endif %}
+            {% elif message.subject %}
+                {{ message.subject }}
+            {% else %}
+                Submitted {{ message.created_at.strftime('%B %d, %Y') }}
+            {% endif %}
+        </div>
+
+        <form method="POST"
+              action="{{ url_for('messages.edit_note', message_id=message.id) }}"
+              novalidate>
+            {{ form.hidden_tag() }}
+
+            <div class="form-group">
+                {{ form.note.label(class="form-label") }}
+
+                {{ form.note(
+                    class="form-textarea" + (" input-error" if form.note.errors else ""),
+                    placeholder="Add your personal thoughts about this email, interview, or company...",
+                    id="note-textarea",
+                    rows=6
+                ) }}
+
+                <div class="char-count-wrapper">
+                    <span class="char-count" id="char-count">0 / 400</span>
+                </div>
+
+                <div class="field-errors">
+                    {% for error in form.note.errors %}
+                        <span class="field-error">{{ error }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="form-footer">
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('messages.show_message', message_id=message.id) }}"
+                   class="btn btn-ghost">
+                    Cancel
+                </a>
+            </div>
+
+        </form>
+    </div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+    const textarea  = document.getElementById("note-textarea");
+    const counter   = document.getElementById("char-count");
+    const MAX_CHARS = 400;
+
+    function updateCount() {
+        const len = textarea.value.length;
+        counter.textContent = `${len} / ${MAX_CHARS}`;
+
+        if (len > MAX_CHARS * 0.9) {
+            counter.classList.add("warn");
+        } else {
+            counter.classList.remove("warn");
+        }
+    }
+
+    updateCount();
+    textarea.addEventListener("input", updateCount);
+</script>
+{% endblock %}

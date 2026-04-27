@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% from "macros.html" import category_badge, urgency_badge %}
+
+{% block title %}Archive — Interview Intel{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .archive-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .message-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .message-card {
+        display: block;
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 10px;
+        padding: 16px 20px;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+        opacity: 0.85;
+    }
+
+    .message-card:hover {
+        background: #faf6ef;
+        border-color: #d9d2c8;
+        transform: translateY(-1px);
+        opacity: 1;
+    }
+
+    .message-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+
+    .message-subject {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #4a3f32;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+    }
+
+    .message-date {
+        font-size: 0.75rem;
+        color: #a89880;
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    .message-card-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .message-sender {
+        font-size: 0.8rem;
+        color: #a89880;
+    }
+
+    .message-summary {
+        font-size: 0.8rem;
+        color: #a89880;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+    }
+
+    /* ── BADGES ── */
+    .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 99px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .badge-blue   { background: #eff6ff; color: #2563eb; }
+    .badge-green  { background: #f0fdf4; color: #16a34a; }
+    .badge-orange { background: #fff7ed; color: #ea580c; }
+    .badge-gray   { background: #f0ede6; color: #6b5f4f; border: 1px solid #e0d9cf; }
+
+    /* ── UNARCHIVE BUTTON ── */
+    .unarchive-btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        background: #f0ede6;
+        color: #4a3f32;
+        border: 1px solid #e0d9cf;
+        cursor: pointer;
+        transition: background 0.15s ease;
+        flex-shrink: 0;
+    }
+
+    .unarchive-btn:hover {
+        background: #e8e2d9;
+    }
+
+    /* ── EMPTY STATE ── */
+    .empty-state {
+        text-align: center;
+        padding: 64px 24px;
+    }
+
+    .empty-icon {
+        font-size: 2.5rem;
+        margin-bottom: 12px;
+    }
+
+    .empty-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #4a3f32;
+        margin-bottom: 6px;
+    }
+
+    .empty-text {
+        font-size: 0.875rem;
+        color: #a89880;
+    }
+
+    /* ── BUTTONS ── */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn-ghost { background: transparent; color: #746857; border: 1px solid #e8e2d9; }
+    .btn-ghost:hover { background: #f7f2e8; }
+
+    @media (max-width: 768px) {
+        .message-card-top { flex-wrap: wrap; }
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+    <!-- ── PAGE HEADER ── -->
+    <div class="archive-header">
+        <div>
+            <h1 class="page-title">Archive</h1>
+            <p class="page-subtitle">Completed and archived interview emails</p>
+        </div>
+        <a href="{{ url_for('messages.index') }}" class="btn btn-ghost">← Back to Inbox</a>
+    </div>
+
+    {% if messages %}
+
+        <div class="message-list">
+            {% for message in messages %}
+
+                <!-- card is a link but unarchive button is a form inside -->
+                <div class="message-card" style="display:block; cursor:default;">
+
+                    <div class="message-card-top">
+                        <a href="{{ url_for('messages.show_message', message_id=message.id) }}"
+                           style="text-decoration:none; flex:1; min-width:0; display:flex; flex-direction:column; gap:8px;">
+
+                            <span class="message-subject">
+                                {% if message.analysis_result and message.analysis_result.role_title %}
+                                    {{ message.analysis_result.role_title }}
+                                    {% if message.analysis_result.company_name %}
+                                        — {{ message.analysis_result.company_name }}
+                                    {% endif %}
+                                {% elif message.subject %}
+                                    {{ message.subject }}
+                                {% else %}
+                                    Email — {{ message.created_at.strftime('%b %d') }}
+                                {% endif %}
+                            </span>
+
+                            <div class="message-card-meta">
+                                {% if message.sender_email %}
+                                    <span class="message-sender">{{ message.sender_email }}</span>
+                                {% endif %}
+
+                                {% if message.analysis_result %}
+                                    {% set cat = message.analysis_result.message_category %}
+
+                                    {{ category_badge(cat) }}
+                                    {{ urgency_badge(urg) }}
+
+                                    {% if message.analysis_result.archive_summary %}
+                                        <span class="message-summary">
+                                            {{ message.analysis_result.archive_summary }}
+                                        </span>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                        </a>
+
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0;">
+                            <span class="message-date">
+                                {{ message.updated_at.strftime('%b %d') }}
+                            </span>
+
+                            <!-- unarchive form -->
+                            <form method="POST"
+                                  action="{{ url_for('messages.unarchive_message', message_id=message.id) }}"
+                                  style="margin:0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="unarchive-btn">
+                                    Restore
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                </div>
+
+            {% endfor %}
+        </div>
+
+    {% else %}
+
+        <div class="empty-state">
+            <div class="empty-icon">🗂️</div>
+            <p class="empty-title">Archive is empty</p>
+            <p class="empty-text">
+                Archived emails will appear here. Archive a message from the inbox to keep things tidy.
+            </p>
+        </div>
+
+    {% endif %}
+
+{% endblock %}

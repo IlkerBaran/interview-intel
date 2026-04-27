@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}Analyze Email — Interview Intel{% endblock %}
+{% block description %}Paste an interview email and let Interview Intel extract the details, classify urgency, and generate preparation guidance.{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .page-header {
+        margin-bottom: 28px;
+    }
+
+    .form-card {
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 12px;
+        padding: 28px 32px;
+        max-width: 720px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #4a3f32;
+        margin-bottom: 6px;
+        letter-spacing: 0.2px;
+    }
+
+    .form-label .optional {
+        font-weight: 400;
+        color: #a89880;
+        margin-left: 4px;
+    }
+
+    .form-input,
+    .form-textarea {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid #d9d2c8;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-family: 'Inter', sans-serif;
+        color: #1a1208;
+        background: #f7f2e8;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        outline: none;
+        box-sizing: border-box;
+    }
+
+    .form-input:focus,
+    .form-textarea:focus {
+        border-color: #8b5e3c;
+        box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.1);
+        background: #fffcf5;
+    }
+
+    .form-input::placeholder,
+    .form-textarea::placeholder {
+        color: #b0a090;
+    }
+
+    .form-textarea {
+        resize: vertical;
+        min-height: 240px;
+        line-height: 1.6;
+    }
+
+    /* character count */
+    .char-count-wrapper {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 6px;
+    }
+
+    .char-count {
+        font-size: 0.75rem;
+        color: #a89880;
+        transition: color 0.15s ease;
+    }
+
+    .char-count.warn {
+        color: #ea580c;
+    }
+
+    /* field errors */
+    .field-errors {
+        margin-top: 6px;
+    }
+
+    .field-error {
+        font-size: 0.78rem;
+        color: #dc2626;
+        display: block;
+        margin-top: 4px;
+    }
+
+    /* two column row for subject + sender */
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    /* submit area */
+    .form-footer {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-top: 8px;
+        padding-top: 20px;
+        border-top: 1px solid #e8e2d9;
+    }
+
+    .btn-submit {
+        background-color: #1a1208;
+        color: #f7f2e8;
+        padding: 10px 24px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        border: none;
+        cursor: pointer;
+        transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-submit:hover {
+        background-color: #2d2010;
+        transform: translateY(-1px);
+    }
+
+    .btn-submit:active {
+        transform: translateY(0);
+    }
+
+    .btn-submit:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .submit-hint {
+        font-size: 0.8rem;
+        color: #a89880;
+    }
+
+    /* what happens next info box */
+    .info-box {
+        background: #f7f2e8;
+        border: 1px solid #e3ddd3;
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-top: 24px;
+        max-width: 720px;
+    }
+
+    .info-box-title {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #4a3f32;
+        margin-bottom: 8px;
+    }
+
+    .info-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .info-list li {
+        font-size: 0.8rem;
+        color: #746857;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .info-list li::before {
+        content: '→';
+        color: #8b5e3c;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    @media (max-width: 768px) {
+        .form-card {
+            padding: 20px 16px;
+        }
+
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+
+        .form-footer {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .btn-submit {
+            width: 100%;
+            text-align: center;
+        }
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+    <div class="page-header">
+        <h1 class="page-title">Analyze an Email</h1>
+        <p class="page-subtitle">Paste any interview-related email and we'll extract the details, classify urgency, and generate preparation guidance.</p>
+    </div>
+
+    <div class="form-card">
+        <form method="POST" action="{{ url_for('messages.new_message') }}" novalidate>
+            {{ form.hidden_tag() }}
+
+            <!-- Subject + Sender row -->
+            <div class="form-row">
+
+                <!-- Subject -->
+                <div class="form-group">
+                    {{ form.subject.label(class="form-label") }}
+                    <span class="optional">(optional)</span>
+                    {{ form.subject(
+                        class="form-input" + (" input-error" if form.subject.errors else ""),
+                        placeholder="Interview Invitation — Software Engineer"
+                    ) }}
+                    <div class="field-errors">
+                        {% for error in form.subject.errors %}
+                            <span class="field-error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Sender Email -->
+                <div class="form-group">
+                    {{ form.sender_email.label(class="form-label") }}
+                    <span class="optional">(optional)</span>
+                    {{ form.sender_email(
+                        class="form-input" + (" input-error" if form.sender_email.errors else ""),
+                        placeholder="recruiter@company.com",
+                        autocomplete="off"
+                    ) }}
+                    <div class="field-errors">
+                        {% for error in form.sender_email.errors %}
+                            <span class="field-error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Email Content -->
+            <div class="form-group">
+                {{ form.raw_text.label(class="form-label") }}
+                {{ form.raw_text(
+                    class="form-textarea" + (" input-error" if form.raw_text.errors else ""),
+                    placeholder="Paste the full interview email here...",
+                    id="raw_text",
+                    rows=12
+                ) }}
+                <div class="char-count-wrapper">
+                    <span class="char-count" id="char-count">0 characters</span>
+                </div>
+                <div class="field-errors">
+                    {% for error in form.raw_text.errors %}
+                        <span class="field-error">{{ error }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Submit -->
+            <div class="form-footer">
+                {{ form.submit(class="btn-submit", id="submit-btn") }}
+                <span class="submit-hint">Analysis takes a few seconds</span>
+            </div>
+
+        </form>
+    </div>
+
+    <!-- What happens next -->
+    <div class="info-box">
+        <p class="info-box-title">What happens when you submit</p>
+        <ul class="info-list">
+            <li>ML model classifies the email category and urgency</li>
+            <li>Interview details are extracted automatically</li>
+            <li>Preparation guidance is generated for your role</li>
+            <li>Questions to ask the interviewer are suggested</li>
+            <li>Tasks are created so nothing falls through the cracks</li>
+        </ul>
+    </div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+    const textarea  = document.getElementById("raw_text");
+    const counter   = document.getElementById("char-count");
+    const submitBtn = document.getElementById("submit-btn");
+    const WARN_AT   = 50;   // warn if below this
+    const MIN_CHARS = 20;   // must match form validator
+
+    function updateCount() {
+        const len = textarea.value.length;
+        counter.textContent = len === 1 ? "1 character" : `${len} characters`;
+
+        // warn color if too short
+        if (len > 0 && len < WARN_AT) {
+            counter.classList.add("warn");
+        } else {
+            counter.classList.remove("warn");
+        }
+
+        // disable submit if below minimum
+        submitBtn.disabled = len < MIN_CHARS;
+    }
+
+    // run on load in case of pre-filled value
+    updateCount();
+    textarea.addEventListener("input", updateCount);
+
+    // disable submit on form submit to prevent double submission
+    textarea.closest("form").addEventListener("submit", function () {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Analyzing...";
+    });
+</script>
+{% endblock %}

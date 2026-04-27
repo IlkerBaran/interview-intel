@@ -1,0 +1,610 @@
+{% extends "base.html" %}
+{% from "macros.html" import category_badge, urgency_badge %}
+
+{% block title %}
+    {{ message.analysis_result.role_title or "Email" }}
+    {% if message.analysis_result and message.analysis_result.company_name %}
+        — {{ message.analysis_result.company_name }}
+    {% endif %}
+    — Interview Intel
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    /* ── PAGE HEADER ── */
+    .message-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .message-title {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #1a1208;
+        letter-spacing: -0.3px;
+        margin: 0 0 6px;
+    }
+
+    .message-subtitle {
+        font-size: 0.875rem;
+        color: #746857;
+        margin: 0;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        flex-shrink: 0;
+    }
+
+    /* ── BADGES ── */
+    .badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 99px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+    }
+
+    .badge-blue   { background: #eff6ff; color: #2563eb; }
+    .badge-green  { background: #f0fdf4; color: #16a34a; }
+    .badge-orange { background: #fff7ed; color: #ea580c; }
+    .badge-gray   { background: #f0ede6; color: #6b5f4f; border: 1px solid #e0d9cf; }
+
+    /* ── SECTION CARDS ── */
+    .section {
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 12px;
+        margin-bottom: 16px;
+        overflow: hidden;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 20px;
+        border-bottom: 1px solid #ebe5db;
+        background: #faf6ef;
+    }
+
+    .section-title {
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: #1a1208;
+        margin: 0;
+    }
+
+    .section-body {
+        padding: 20px;
+    }
+
+    /* ── DETAIL GRID ── */
+    .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+    }
+
+    .detail-item {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .detail-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #a89880;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .detail-value {
+        font-size: 0.875rem;
+        color: #1a1208;
+        font-weight: 500;
+    }
+
+    .detail-value.empty {
+        color: #c4b9aa;
+        font-style: italic;
+        font-weight: 400;
+    }
+
+    /* ── PREDICTION ROW ── */
+    .prediction-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .prediction-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .prediction-label {
+        font-size: 0.75rem;
+        color: #a89880;
+        font-weight: 500;
+    }
+
+    .confidence {
+        font-size: 0.7rem;
+        color: #c4b9aa;
+    }
+
+    /* ── LLM TEXT CONTENT ── */
+    .llm-content {
+        font-size: 0.875rem;
+        color: #4a3f32;
+        line-height: 1.8;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .llm-empty {
+        font-size: 0.875rem;
+        color: #c4b9aa;
+        font-style: italic;
+    }
+
+    /* ── TASKS SECTION ── */
+    .task-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .task-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        background: #f7f2e8;
+        border: 1px solid #e8e2d9;
+        border-radius: 8px;
+    }
+
+    .task-check {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1.5px solid #d9d2c8;
+        flex-shrink: 0;
+    }
+
+    .task-check.done {
+        background: #1a1208;
+        border-color: #1a1208;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #f7f2e8;
+        font-size: 10px;
+    }
+
+    .task-name {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #1a1208;
+        flex: 1;
+    }
+
+    .task-name.done {
+        text-decoration: line-through;
+        color: #a89880;
+    }
+
+    /* ── RAW EMAIL ── */
+    .raw-email {
+        font-size: 0.825rem;
+        color: #4a3f32;
+        line-height: 1.8;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f7f2e8;
+        border: 1px solid #e8e2d9;
+        border-radius: 8px;
+        padding: 16px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    /* ── NOTE SECTION ── */
+    .note-content {
+        font-size: 0.875rem;
+        color: #4a3f32;
+        line-height: 1.7;
+        white-space: pre-wrap;
+    }
+
+    .note-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    /* ── ACTION BUTTONS ── */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 14px;
+        border-radius: 7px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+
+    .btn-primary   { background: #1a1208; color: #f7f2e8; }
+    .btn-primary:hover { background: #2d2010; }
+
+    .btn-secondary { background: #e8e2d9; color: #4a3f32; }
+    .btn-secondary:hover { background: #ddd7ce; }
+
+    .btn-danger    { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+    .btn-danger:hover { background: #fecaca; }
+
+    .btn-ghost     { background: transparent; color: #746857; border: 1px solid #e8e2d9; }
+    .btn-ghost:hover { background: #f7f2e8; }
+
+    /* ── DANGER ZONE ── */
+    .danger-zone {
+        border: 1px solid #fecaca;
+        border-radius: 12px;
+        padding: 16px 20px;
+        background: #fef2f2;
+        margin-bottom: 16px;
+    }
+
+    .danger-zone-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #dc2626;
+        margin-bottom: 8px;
+    }
+
+    .danger-zone-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    /* ── PROCESSING STATE ── */
+    .processing-banner {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin-bottom: 16px;
+        font-size: 0.875rem;
+        color: #92400e;
+        font-weight: 500;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+        .detail-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .message-header {
+            flex-direction: column;
+        }
+
+        .header-actions {
+            width: 100%;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .detail-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+{% set ar = message.analysis_result %}
+
+    <!-- ── PAGE HEADER ── -->
+    <div class="message-header">
+        <div>
+            <h1 class="message-title">
+                {% if ar and ar.role_title %}
+                    {{ ar.role_title }}
+                    {% if ar.company_name %} — {{ ar.company_name }}{% endif %}
+                {% elif message.subject %}
+                    {{ message.subject }}
+                {% else %}
+                    Email Analysis
+                {% endif %}
+            </h1>
+            <p class="message-subtitle">
+                Analyzed {{ message.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                {% if message.sender_email %}· {{ message.sender_email }}{% endif %}
+            </p>
+        </div>
+
+        <div class="header-actions">
+            <a href="{{ url_for('messages.index') }}" class="btn btn-ghost">← Back</a>
+
+            <form method="POST"
+                  action="{{ url_for('messages.archive_message', message_id=message.id) }}"
+                  style="margin:0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-secondary">Archive</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── PROCESSING BANNER ── -->
+    {% if message.status == "processing" %}
+        <div class="processing-banner">
+            ⏳ This email is still being analyzed. Refresh in a moment.
+        </div>
+    {% elif message.status == "failed" %}
+        <div class="processing-banner" style="background:#fef2f2; border-color:#fecaca; color:#991b1b;">
+            ⚠️ Analysis failed for this email. The raw email is still saved below.
+        </div>
+    {% endif %}
+
+    {% if ar %}
+
+        <!-- ── ML PREDICTIONS ── -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Classification</h2>
+            </div>
+            <div class="section-body">
+                <div class="prediction-row">
+
+                    <div class="prediction-item">
+                        <span class="prediction-label">Category</span>
+                        {{ category_badge(ar.message_category) }}
+
+                        {% if ar.category_confidence %}
+                            <span class="confidence">{{ (ar.category_confidence * 100)|int }}%</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="prediction-item">
+                        <span class="prediction-label">Urgency</span>
+                        {{ urgency_badge(ar.urgency_level) }}
+                        {% if ar.urgency_confidence %}
+                            <span class="confidence">{{ (ar.urgency_confidence * 100)|int }}%</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="prediction-item">
+                        <span class="prediction-label">Field</span>
+                        <span class="badge badge-gray">
+                            {{ ar.job_field | replace("_", " ") | title if ar.job_field else "Unknown" }}
+                        </span>
+                        {% if ar.job_field_confidence %}
+                            <span class="confidence">{{ (ar.job_field_confidence * 100)|int }}%</span>
+                        {% endif %}
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ── INTERVIEW DETAILS ── -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Interview Details</h2>
+            </div>
+            <div class="section-body">
+                <div class="detail-grid">
+
+                    <div class="detail-item">
+                        <span class="detail-label">Company</span>
+                        <span class="detail-value {% if not ar.company_name %}empty{% endif %}">
+                            {{ ar.company_name or "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Role</span>
+                        <span class="detail-value {% if not ar.role_title %}empty{% endif %}">
+                            {{ ar.role_title or "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Stage</span>
+                        <span class="detail-value {% if not ar.interview_stage %}empty{% endif %}">
+                            {{ ar.interview_stage | replace("_", " ") | title if ar.interview_stage else "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Format</span>
+                        <span class="detail-value {% if not ar.interview_format %}empty{% endif %}">
+                            {{ ar.interview_format | title if ar.interview_format else "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Date</span>
+                        <span class="detail-value {% if not ar.date_text %}empty{% endif %}">
+                            {{ ar.date_text or "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Time</span>
+                        <span class="detail-value {% if not ar.time_text %}empty{% endif %}">
+                            {{ ar.time_text or "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Location</span>
+                        <span class="detail-value {% if not ar.location_text %}empty{% endif %}">
+                            {{ ar.location_text or "Not found" }}
+                        </span>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ── PREPARATION GUIDANCE ── -->
+        {% if ar.preparation_guidance %}
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Preparation Guidance</h2>
+            </div>
+            <div class="section-body">
+                <div class="llm-content">{{ ar.preparation_guidance }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ── QUESTIONS TO ASK ── -->
+        {% if ar.suggested_questions %}
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Questions to Ask</h2>
+            </div>
+            <div class="section-body">
+                <div class="llm-content">{{ ar.suggested_questions }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ── REPLY SUGGESTION ── -->
+        {% if ar.reply_suggestions %}
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Suggested Reply</h2>
+            </div>
+            <div class="section-body">
+                <div class="llm-content">{{ ar.reply_suggestions }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ── ROLE SUMMARY ── -->
+        {% if ar.role_summary %}
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Role Summary</h2>
+            </div>
+            <div class="section-body">
+                <div class="llm-content">{{ ar.role_summary }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+    {% endif %}
+
+    <!-- ── TASKS ── -->
+    {% if message.tasks %}
+    <div class="section">
+        <div class="section-header">
+            <h2 class="section-title">Tasks</h2>
+            <a href="{{ url_for('tasks.show_all_tasks') }}" style="font-size:0.75rem; color:#8b5e3c; text-decoration:none; font-weight:600;">
+                View all →
+            </a>
+        </div>
+        <div class="section-body">
+            <ul class="task-list">
+                {% for task in message.tasks %}
+                    <li class="task-item">
+                        <div class="task-check {% if task.is_completed %}done{% endif %}">
+                            {% if task.is_completed %}✓{% endif %}
+                        </div>
+                        <span class="task-name {% if task.is_completed %}done{% endif %}">
+                            {{ task.task_name }}
+                        </span>
+                        <span class="badge {% if task.priority == 'high' %}badge-orange{% elif task.priority == 'medium' %}badge-blue{% else %}badge-gray{% endif %}">
+                            {{ task.priority | title }}
+                        </span>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ── NOTE ── -->
+    <div class="section">
+        <div class="section-header">
+            <h2 class="section-title">Personal Note</h2>
+            <a href="{{ url_for('messages.edit_note', message_id=message.id) }}"
+               class="btn btn-ghost" style="padding: 4px 10px; font-size: 0.75rem;">
+                {% if message.note %}Edit{% else %}Add Note{% endif %}
+            </a>
+        </div>
+        <div class="section-body">
+            {% if message.note %}
+                <div class="note-content">{{ message.note }}</div>
+                <div class="note-actions">
+                    <form method="POST"
+                          action="{{ url_for('messages.delete_note', message_id=message.id) }}"
+                          style="margin:0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-ghost"
+                                style="font-size:0.75rem; padding:4px 10px;">
+                            Delete note
+                        </button>
+                    </form>
+                </div>
+            {% else %}
+                <p class="llm-empty">No note added yet.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ── RAW EMAIL ── -->
+    <div class="section">
+        <div class="section-header">
+            <h2 class="section-title">Original Email</h2>
+        </div>
+        <div class="section-body">
+            <div class="raw-email">{{ message.raw_text }}</div>
+        </div>
+    </div>
+
+    <!-- ── DANGER ZONE ── -->
+    <div class="danger-zone">
+        <p class="danger-zone-title">Danger Zone</p>
+        <div class="danger-zone-actions">
+            <form method="POST"
+                  action="{{ url_for('messages.delete_message', message_id=message.id) }}"
+                  style="margin:0"
+                  onsubmit="return confirm('Delete this email and all its data? This cannot be undone.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger">Delete Email</button>
+            </form>
+        </div>
+    </div>
+
+{% endblock %}

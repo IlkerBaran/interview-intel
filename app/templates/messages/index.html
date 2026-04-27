@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% from "macros.html" import category_badge, urgency_badge %}
+
+{% block title %}Inbox — Interview Intel{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .inbox-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .filter-bar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .filter-select {
+        padding: 7px 12px;
+        border: 1px solid #d9d2c8;
+        border-radius: 7px;
+        font-size: 0.8rem;
+        font-family: 'Inter', sans-serif;
+        color: #4a3f32;
+        background: #f7f2e8;
+        outline: none;
+        cursor: pointer;
+        transition: border-color 0.15s ease;
+    }
+
+    .filter-select:focus {
+        border-color: #8b5e3c;
+    }
+
+    .filter-count {
+        font-size: 0.8rem;
+        color: #a89880;
+        margin-left: auto;
+    }
+
+    .message-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .message-card {
+        display: block;
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 10px;
+        padding: 16px 20px;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    }
+
+    .message-card:hover {
+        background: #faf6ef;
+        border-color: #d9d2c8;
+        transform: translateY(-1px);
+    }
+
+    .message-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+
+    .message-subject {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #1a1208;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+    }
+
+    .message-date {
+        font-size: 0.75rem;
+        color: #a89880;
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    .message-card-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .message-sender {
+        font-size: 0.8rem;
+        color: #746857;
+    }
+
+    .message-summary {
+        font-size: 0.8rem;
+        color: #746857;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 99px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .badge-blue   { background: #eff6ff; color: #2563eb; }
+    .badge-green  { background: #f0fdf4; color: #16a34a; }
+    .badge-orange { background: #fff7ed; color: #ea580c; }
+    .badge-gray   { background: #f0ede6; color: #6b5f4f; border: 1px solid #e0d9cf; }
+
+    .empty-state {
+        text-align: center;
+        padding: 64px 24px;
+    }
+
+    .empty-icon {
+        font-size: 2.5rem;
+        margin-bottom: 12px;
+    }
+
+    .empty-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #4a3f32;
+        margin-bottom: 6px;
+    }
+
+    .empty-text {
+        font-size: 0.875rem;
+        color: #a89880;
+        margin-bottom: 20px;
+    }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: #1a1208; color: #f7f2e8; }
+    .btn-primary:hover { background: #2d2010; }
+
+    @media (max-width: 768px) {
+        .message-card-top { flex-wrap: wrap; }
+        .filter-count { width: 100%; margin-left: 0; }
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+    <div class="inbox-header">
+        <div>
+            <h1 class="page-title">Inbox</h1>
+            <p class="page-subtitle">Your active interview emails</p>
+        </div>
+        <a href="{{ url_for('messages.new_message') }}" class="btn btn-primary">
+            + Analyze Email
+        </a>
+    </div>
+
+    {% if messages %}
+
+        <div class="filter-bar">
+            <select class="filter-select" id="category-filter" onchange="filterMessages()">
+                <option value="">All categories</option>
+                <option value="interview_invitation">Interview Invitation</option>
+                <option value="offer">Offer</option>
+                <option value="rejection">Rejection</option>
+                <option value="scheduling">Scheduling</option>
+                <option value="recruiter_outreach">Recruiter Outreach</option>
+                <option value="follow_up">Follow-up</option>
+            </select>
+
+            <select class="filter-select" id="urgency-filter" onchange="filterMessages()">
+                <option value="">All urgency</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+            </select>
+
+            <span class="filter-count" id="filter-count">
+                {{ messages | length }} email{{ 's' if messages | length != 1 else '' }}
+            </span>
+        </div>
+
+        <div class="message-list" id="message-list">
+            {% for message in messages %}
+                <a href="{{ url_for('messages.show_message', message_id=message.id) }}"
+                   class="message-card"
+                   data-category="{{ message.analysis_result.message_category if message.analysis_result else '' }}"
+                   data-urgency="{{ message.analysis_result.urgency_level if message.analysis_result else '' }}">
+
+                    <div class="message-card-top">
+                        <span class="message-subject">
+                            {% if message.analysis_result and message.analysis_result.role_title %}
+                                {{ message.analysis_result.role_title }}
+                                {% if message.analysis_result.company_name %}
+                                    — {{ message.analysis_result.company_name }}
+                                {% endif %}
+                            {% elif message.subject %}
+                                {{ message.subject }}
+                            {% else %}
+                                Email — {{ message.created_at.strftime('%b %d') }}
+                            {% endif %}
+                        </span>
+                        <span class="message-date">
+                            {{ message.created_at.strftime('%b %d') }}
+                        </span>
+                    </div>
+
+                    <div class="message-card-meta">
+
+                        {% if message.sender_email %}
+                            <span class="message-sender">{{ message.sender_email }}</span>
+                        {% endif %}
+
+                        {% if message.analysis_result %}
+                            {% set cat = message.analysis_result.message_category %}
+                            {% set urg = message.analysis_result.urgency_level %}
+
+                            {{ category_badge(cat) }}
+                            {{ urgency_badge(urg) }}
+
+                            {% if message.analysis_result.archive_summary %}
+                                <span class="message-summary">
+                                    {{ message.analysis_result.archive_summary }}
+                                </span>
+                            {% endif %}
+
+                        {% elif message.status == "processing" %}
+                            <span style="font-size:0.8rem; color:#92400e;">⏳ Analyzing...</span>
+
+                        {% elif message.status == "failed" %}
+                            <span style="font-size:0.8rem; color:#dc2626;">⚠️ Analysis failed</span>
+                        {% endif %}
+
+                        {% if message.note %}
+                            <span class="badge badge-gray">📝</span>
+                        {% endif %}
+
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+
+    {% else %}
+
+        <div class="empty-state">
+            <div class="empty-icon">📬</div>
+            <p class="empty-title">Your inbox is empty</p>
+            <p class="empty-text">Paste your first interview email to get started.</p>
+            <a href="{{ url_for('messages.new_message') }}" class="btn btn-primary">
+                + Analyze your first email
+            </a>
+        </div>
+
+    {% endif %}
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+    function filterMessages() {
+        const categoryFilter = document.getElementById("category-filter").value;
+        const urgencyFilter  = document.getElementById("urgency-filter").value;
+        const cards          = document.querySelectorAll(".message-card");
+        const countEl        = document.getElementById("filter-count");
+
+        let visible = 0;
+
+        cards.forEach(card => {
+            const catMatch = !categoryFilter || card.dataset.category === categoryFilter;
+            const urgMatch = !urgencyFilter  || card.dataset.urgency  === urgencyFilter;
+
+            if (catMatch && urgMatch) {
+                card.style.display = "block";
+                visible++;
+            } else {
+                card.style.display = "none";
+            }
+        });
+
+        countEl.textContent = `${visible} email${visible !== 1 ? "s" : ""}`;
+    }
+</script>
+{% endblock %}
