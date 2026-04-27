@@ -1,12 +1,11 @@
 import logging
-from urllib.parse import urlsplit
 
 from flask import Blueprint, render_template, redirect, url_for, flash, abort, request
 from flask_login import login_required, current_user
 
 from app.extensions import db
 from app.models import Task, Message, MessageStatus
-from app.utils import verified_required
+from app.utils import verified_required, safe_redirect
 
 logger = logging.getLogger(__name__)
 
@@ -32,21 +31,6 @@ def get_user_task_or_404(task_id):
     if task is None:
         abort(404)
     return task
-
-
-def safe_redirect(default_endpoint="tasks.show_all_tasks"):
-    """
-    Redirect user to the page they originally wanted after login.
-    If "next" is missing or unsafe, go to a default endpoint.
-
-    Prevents open redirect vulnerabilities.
-    """
-    next_page = request.args.get("next")
-
-    if not next_page or urlsplit(next_page).netloc:
-        return redirect(url_for(default_endpoint))
-
-    return redirect(url_for(next_page))
 
 
 @tasks_bp.route("/", methods=["GET"])
@@ -96,14 +80,19 @@ def toggle_task(task_id):
 
         flash("Task updated successfully!", "success")
 
-    except Exception:
+    except Exception as e:
         db.session.rollback()
-        logger.exception("Error while toggling task status")
+        logger.error(
+            "Error while toggling task status error_type=%s",
+            type(e).__name__,
+            extra={
+                "error_type": type(e).__name__
+            }
+        )
         flash("Something went wrong while updating the task!", "danger")
 
-    # redirect to next if provided, otherwise task list
-    next_page = request.args.get("next")
-    return redirect(next_page or url_for("tasks.show_all_tasks"))
+    # safe_redirect() blocks external URLs and javascript: schemes — see utils.py
+    return safe_redirect("tasks.show_all_tasks")
 
 
 @tasks_bp.route("/<int:task_id>/delete", methods=["POST"])
@@ -122,10 +111,17 @@ def delete_task(task_id):
 
         flash("Task deleted successfully!", "success")
 
-    except Exception:
+    except Exception as e:
         db.session.rollback()
-        logger.exception("Error while deleting task")
+        logger.error(
+            "Error while deleting task error_type=%s",
+            type(e).__name__,
+            extra={
+                "error_type": type(e).__name__
+            }
+        )
         flash("Something went wrong while deleting the task!", "danger")
 
-    return safe_redirect()
+    # safe_redirect() blocks external URLs and javascript: schemes — see utils.py
+    return safe_redirect("tasks.show_all_tasks")
 
