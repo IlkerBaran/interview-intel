@@ -69,6 +69,19 @@ def create_app():
             "llm_service": llm_service
         }
 
+    # TODO: replace with Flask-Talisman for production security headers
+    # Requires: pip install flask-talisman
+    # Requires: move all inline style="" attributes to CSS classes
+    # Requires: add nonce="{{ csp_nonce }}" to all inline <script> and <style> blocks
+    # See: https://github.com/GoogleCloudPlatform/flask-talisman
+    @app.after_request
+    def set_security_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        return response
+
+
     # ≈≈≈≈ load Ml models once at startup ≈≈≈≈
     with app.app_context():
         try:

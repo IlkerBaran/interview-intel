@@ -1,6 +1,8 @@
 from flask import Blueprint, render_template
 from flask_wtf.csrf import CSRFError
 
+from app.extensions import db
+
 errors_bp = Blueprint("errors", __name__)
 
 
@@ -11,6 +13,7 @@ def not_found_error(error):
 
 @errors_bp.app_errorhandler(500)
 def internal_error(error):
+    db.session.rollback()
     return render_template("errors/500.html"), 500
 
 
