@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Applications — Interview Intel{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <h1 class="page-title" style="margin:0;">Applications</h1>
+    <a href="{{ url_for('applications.new_application') }}" class="btn btn-primary btn-sm">
+        + New application
+    </a>
+</div>
+<p class="page-subtitle">Track every job you apply to in one place.</p>
+
+<!-- Pipeline bar -->
+<div class="pipeline-bar">
+    <a href="{{ url_for('applications.index') }}"
+       class="pipeline-pill {% if not active_filter %}active{% endif %}">
+        All
+        <span class="pill-count">
+            {{ counts.values() | sum }}
+        </span>
+    </a>
+
+    {% for status in ApplicationStatus %}
+    <a href="{{ url_for('applications.index', status=status.value) }}"
+       class="pipeline-pill {% if active_filter == status.value %}active{% endif %}">
+        {{ status.value.replace('_', ' ').title() }}
+        <span class="pill-count">{{ counts[status.value] }}</span>
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Applications list -->
+{% if applications %}
+    {% for app in applications %}
+    <div class="app-card {% if app.status == 'withdrawn' %}app-card-muted{% endif %}">
+
+        <div class="app-card-left">
+            <p class="app-card-company">{{ app.company }}</p>
+            <p class="app-card-role">{{ app.role }}</p>
+            <div class="app-card-meta">
+                <span class="status-badge">
+                    {{ app.status.replace('_', ' ').title() }}
+                </span>
+                {% if app.applied_date %}
+                <span class="app-card-meta-item">
+                    Applied {{ app.applied_date.strftime('%b %d, %Y') }}
+                </span>
+                {% endif %}
+                {% if app.source %}
+                <span class="app-card-meta-item">
+                    via {{ app.source }}
+                </span>
+                {% endif %}
+                {% if app.job_field %}
+                <span class="app-card-meta-item">
+                    {{ app.job_field }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="app-card-actions">
+            <a href="{{ url_for('applications.show_application', application_id=app.id) }}"
+               class="btn btn-secondary btn-sm">
+                View
+            </a>
+            <a href="{{ url_for('applications.edit_application', application_id=app.id) }}"
+               class="btn btn-secondary btn-sm">
+                Edit
+            </a>
+            <form method="POST"
+                  action="{{ url_for('applications.delete_application', application_id=app.id) }}"
+                  onsubmit="return confirm('Delete this application?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            </form>
+        </div>
+
+    </div>
+    {% endfor %}
+
+{% else %}
+    <div class="empty">
+        <p class="empty-title">
+            {% if active_filter %}
+                No {{ active_filter.replace('_', ' ').lower() }} applications yet.
+            {% else %}
+                No applications yet.
+            {% endif %}
+        </p>
+        <p class="empty-text">
+            {% if active_filter %}
+                <a href="{{ url_for('applications.index') }}">View all applications</a>
+                or
+                <a href="{{ url_for('applications.new_application') }}">add a new one.</a>
+            {% else %}
+                <a href="{{ url_for('applications.new_application') }}">Add your first application</a>
+                to start tracking your job search.
+            {% endif %}
+        </p>
+    </div>
+{% endif %}
+
+{% endblock %}

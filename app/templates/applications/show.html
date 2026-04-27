@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% from "macros.html" import category_badge, urgency_badge %}
+
+{% block title %}{{ application.company }} — {{ application.role }} — Interview Intel{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="detail-header">
+    <div>
+        <h1 class="detail-company">
+            <a href="{{ url_for('applications.index', company=application.company) }}"
+               style="color:#1a1208;text-decoration:none;">
+                {{ application.company }}
+            </a>
+        </h1>
+        <p class="detail-role">{{ application.role }}</p>
+        <div>
+            <a href="{{ url_for('applications.index') }}"
+               style="font-size:0.825rem;color:#8b5e3c;text-decoration:none;">
+                ← Back to applications
+            </a>
+        </div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+        <a href="{{ url_for('applications.edit_application', application_id=application.id) }}"
+           class="btn btn-secondary btn-sm">
+            Edit
+        </a>
+        <form method="POST"
+              action="{{ url_for('applications.delete_application', application_id=application.id) }}"
+              onsubmit="return confirm('Delete this application? This cannot be undone.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+    </div>
+</div>
+
+<!-- Meta info -->
+<div class="card">
+    <div class="detail-meta">
+
+        {% if application.applied_date %}
+        <div class="detail-meta-item">
+            <span class="detail-meta-label">Applied</span>
+            <span class="detail-meta-value">{{ application.applied_date.strftime('%b %d, %Y') }}</span>
+        </div>
+        {% endif %}
+
+        {% if application.source %}
+        <div class="detail-meta-item">
+            <span class="detail-meta-label">Source</span>
+            <span class="detail-meta-value">{{ application.source }}</span>
+        </div>
+        {% endif %}
+
+        {% if application.posting_url %}
+        <div class="detail-meta-item">
+            <span class="detail-meta-label">Job posting</span>
+            <span class="detail-meta-value">
+                <a href="{{ application.posting_url }}"
+                   target="_blank"
+                   rel="noopener noreferrer">
+                    View posting ↗
+                </a>
+            </span>
+        </div>
+        {% endif %}
+
+        <div class="detail-meta-item">
+            <span class="detail-meta-label">Added</span>
+            <span class="detail-meta-value">{{ application.created_at.strftime('%b %d, %Y') }}</span>
+        </div>
+
+    </div>
+
+    <!-- Status buttons -->
+    <div class="detail-section">
+        <p class="detail-section-title">Status</p>
+        <div class="status-buttons">
+            {% for status in ApplicationStatus %}
+            <form method="POST"
+                  action="{{ url_for('applications.update_status', application_id=application.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="status" value="{{ status.value }}">
+                <button type="submit"
+                        class="pipeline-pill {% if application.status == status.value %}active{% endif %}">
+                    {{ status.label }}
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+<!-- Note -->
+<div class="detail-section">
+    <p class="detail-section-title">Notes</p>
+    {% if application.note %}
+        <pre class="notes-text">{{ application.note }}</pre>
+    {% else %}
+        <div class="empty" style="padding:24px;text-align:left;">
+            <p class="empty-text">
+                No notes yet.
+                <a href="{{ url_for('applications.edit_application', application_id=application.id) }}">
+                    Add a note.
+                </a>
+            </p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Linked emails -->
+<div class="detail-section">
+    <p class="detail-section-title">Linked Emails</p>
+
+    {% if application.messages %}
+        {% for message in application.messages %}
+        <div class="linked-email-item">
+            <div class="linked-email-left">
+                <p class="linked-email-category">
+                    {% if message.analysis_result %}
+                        {{ category_badge(message.analysis_result.message_category) }}
+                        {% if message.analysis_result.urgency_level %}
+                            {{ urgency_badge(message.analysis_result.urgency_level) }}
+                        {% endif %}
+                    {% else %}
+                        <span class="badge badge-gray">Unanalyzed</span>
+                    {% endif %}
+                </p>
+                <p class="linked-email-date">
+                    {{ message.created_at.strftime('%b %d, %Y') }}
+                    {% if message.subject %}— {{ message.subject }}{% endif %}
+                </p>
+            </div>
+            <a href="{{ url_for('messages.show_message', message_id=message.id) }}"
+               class="btn btn-secondary btn-sm">
+                View
+            </a>
+        </div>
+        {% endfor %}
+
+    {% else %}
+        <div class="card" style="text-align:center;padding:32px 24px;">
+            <p style="font-size:0.875rem;font-weight:600;color:#6b5f4f;margin:0 0 6px;">
+                No emails linked yet
+            </p>
+            <p style="font-size:0.825rem;color:#8a7d6b;margin:0;">
+                Analyze an email and it will appear here automatically
+                when matched to this application.
+            </p>
+        </div>
+    {% endif %}
+</div>
+
+{% endblock %}
