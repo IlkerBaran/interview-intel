@@ -1,25 +1,19 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, SubmitField
-from wtforms.validators import DataRequired, Length, Email, EqualTo, ValidationError
+from wtforms import PasswordField, BooleanField, EmailField, SubmitField
+from wtforms.validators import DataRequired, Length, Email, EqualTo
 
-from app.extensions import db
-from app.models import User
-
-
-def _normalize_email(x):
-    """Strip whitespace and lowercase email input."""
-    return x.strip().lower() if x else x
+from app.utils import normalize_email
 
 
 class RegisterForm(FlaskForm):
-    email = StringField(
+    email = EmailField(
         "Email",
         validators=[
             DataRequired(message="Email is required."),
             Email(message="Enter a valid email address."),
-            Length(max=255, message="Email must be less than 256 characters."),
+            Length(max=255, message="Email must be less than 255 characters."),
         ],
-        filters=[_normalize_email],
+        filters=[normalize_email],
         render_kw={"placeholder": "Enter your email"},
     )
 
@@ -43,25 +37,16 @@ class RegisterForm(FlaskForm):
 
     submit = SubmitField("Sign Up")
 
-    def validate_email(self, email):
-        """Prevent duplicate registration for verified users."""
-        existing_user = db.session.execute(
-            db.select(User).where(User.email == email.data)
-        ).scalar_one_or_none()
-
-        if existing_user and existing_user.is_verified:
-            raise ValidationError("Email is already registered.")
-
 
 class LoginForm(FlaskForm):
-    email = StringField(
+    email = EmailField(
         "Email",
         validators=[
             DataRequired(message="Email is required."),
             Email(message="Enter a valid email address."),
-            Length(max=255, message="Email must be less than 256 characters."),
+            Length(max=255, message="Email must be less than 255 characters."),
         ],
-        filters=[_normalize_email],
+        filters=[normalize_email],
         render_kw={"placeholder": "Enter your email"},
     )
 
@@ -80,14 +65,14 @@ class LoginForm(FlaskForm):
 
 
 class ForgotPasswordForm(FlaskForm):
-    email = StringField(
+    email = EmailField(
         "Email",
         validators=[
             DataRequired(message="Email is required."),
             Email(message="Enter a valid email address."),
-            Length(max=255, message="Email must be less than 256 characters."),
+            Length(max=255, message="Email must be less than 255 characters."),
         ],
-        filters=[_normalize_email],
+        filters=[normalize_email],
         render_kw={"placeholder": "Enter your email"},
     )
 

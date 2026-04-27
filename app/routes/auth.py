@@ -1,4 +1,4 @@
-from urllib.parse import urlsplit
+from werkzeug.security import generate_password_hash, check_password_hash
 import logging
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
@@ -12,16 +12,25 @@ from app.services.auth_service import(
     generate_verification_token,
     generate_password_reset_token,
     verify_password_reset_token
-
 )
 from app.services.email_service import queue_email
+from app.utils import safe_redirect
+
 
 logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
+# Module-level dummy password hash to normalize login timing
+# Prevents timing-based account enumeration when user is not found
+_DUMMY_PASSWORD_HASH = generate_password_hash("dummy-timing-attack-mitigation")
+
 
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
+    """
+    Handle user registration, prevent duplicate accounts,
+    and send an email verification link.
+    """
     if current_user.is_authenticated:
         return redirect(url_for("dashboard.index"))
 
@@ -42,9 +51,17 @@ def register():
 
                 try:
                     db.session.commit()
-                except Exception:
+                except Exception as e:
                     db.session.rollback()
-                    logger.exception("Failed to regenerate token for unverified user=%s", existing_user.email)
+                    logger.error(
+                        "Failed to regenerate token for unverified user_id=%s error_type=%s",
+                        existing_user.id,
+                        type(e).__name__,
+                        extra={
+                            "user_id": existing_user.id,
+                            "error_type": type(e).__name__
+                        }
+                    )
                     flash("Something went wrong. Please try again.", "danger")
                     return redirect(url_for("auth.register"))
 
@@ -64,13 +81,12 @@ def register():
                     plain=f"Confirm your email by visiting: {confirmation_url}"
                 )
 
-                flash(
-                    "This email is already registered but not verified. "
-                    "We sent you a new confirmation link.",
-                    "info"
+            # same message regardless of verified status
+            # prevent account enumeration attack
+            flash(
+                "If that email is available you will receive a confirmation link shortly.",
+                "info"
                 )
-            else:
-                flash("This email is already registered. Please log in.", "warning")
 
             return redirect(url_for("auth.login"))
 
@@ -84,9 +100,15 @@ def register():
         try:
             db.session.add(user)
             db.session.commit()
-        except Exception:
+        except Exception as e:
             db.session.rollback()
-            logger.exception("Failed to commit new user registration for email=%s", form.email.data)
+            logger.error(
+                "Failed to commit new user registration error_type=%s",
+                type(e).__name__,
+                extra={
+                    "error_type": type(e).__name__
+                }
+            )
             flash("Something went wrong. Please try again.", "danger")
             return redirect(url_for("auth.register"))
 
@@ -106,7 +128,10 @@ def register():
             plain=f"Confirm your email by visiting: {confirmation_url}"
         )
 
-        flash("Account created — please check your email to confirm your address.", "info")
+        flash(
+            "If that email is available you will receive a confirmation link shortly.",
+            "info"
+        )
         return redirect(url_for("auth.login"))
 
     return render_template("auth/register.html", form=form)
@@ -115,6 +140,10 @@ def register():
 @auth_bp.route("/delete-account", methods=["POST"])
 @login_required
 def delete_account():
+    """
+    Delete the current user's account, remove all associated data,
+    and log the user out safely.
+    """
     user = current_user._get_current_object()
 
     try:
@@ -125,15 +154,27 @@ def delete_account():
         flash("Your account and all data have been deleted.", "info")
         return redirect(url_for("main.home"))
 
-    except Exception:
+    except Exception as e:
         db.session.rollback()
-        logger.exception("Error deleting account for user %s", user.id)
+        logger.error(
+            "Error while deleting account for user_id=%s error_type=%s",
+            user.id,
+            type(e).__name__,
+            extra={
+                "user_id": user.id,
+                "error_type": type(e).__name__
+            }
+        )
         flash("Something went wrong. Please try again.", "danger")
         return redirect(url_for("dashboard.index"))
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
+    """
+    Authenticate user credentials, protect against timing attacks,
+    and redirect safely after login.
+    """
     if current_user.is_authenticated:
         return redirect(url_for("dashboard.index"))
 
@@ -148,20 +189,20 @@ def login():
         ).scalar_one_or_none()
 
 
-        if user and user.verify_password(form.password.data):
+        # Pre-computed hash used to normalize login response time when the email is not found.
+        # Prevents timing-based account enumeration attack (bcrypt is intentionally slow).
+        if user:
+            password_ok = user.verify_password(form.password.data)
+        else:
+            check_password_hash(_DUMMY_PASSWORD_HASH, form.password.data)
+            password_ok = False
+
+        if user and password_ok:
             login_user(user, form.remember_me.data)
             flash("You have been logged in successfully.", "success")
 
-
-            # Redirect user to the page they originally wanted after login.
-            # If "next" is missing or unsafe, go to dashboard instead.
-            # Prevents open redirect vulnerabilities.
-            next_page = request.args.get("next")
-            if not next_page or urlsplit(next_page).netloc != "":
-                return redirect(url_for("dashboard.index"))
-
-            return redirect(next_page)
-
+            # safe_redirect() blocks external URLs and javascript: schemes — see utils.py
+            return safe_redirect("dashboard.index")
 
         flash("Invalid email or password.", "danger")
 
@@ -171,6 +212,9 @@ def login():
 @auth_bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
+    """
+    Log out the current user and clear their session.
+    """
     logout_user()
     flash("You have been logged out.", "info")
     return redirect(url_for("auth.login"))
@@ -190,10 +234,16 @@ def verify_email(token):
         try:
             db.session.commit()
             flash(message, "success")
-            logger.info("Email verification commited successfully")
-        except Exception:
+            logger.info("Email verification committed successfully")
+        except Exception as e:
             db.session.rollback()
-            logger.exception("Failed to commit email verification")
+            logger.error(
+                "Failed to commit email verification error_type=%s",
+                type(e).__name__,
+                extra={
+                    "error_type": type(e).__name__
+                }
+            )
             flash("Verification failed. Please try again.", "danger")
             return redirect(url_for("auth.login"))
     else:
@@ -232,14 +282,19 @@ def resend_verification():
 
     try:
         db.session.commit()
-    except Exception:
+    except Exception as e:
         db.session.rollback()
-        logger.exception(
-            "Failed to regenerate verification token for user=%s",
-            current_user.email
+        logger.error(
+            "Failed to regenerate verification token for user_id=%s error_type=%s",
+            current_user.id,
+            type(e).__name__,
+            extra={
+                "user_id": current_user.id,
+                "error_type": type(e).__name__
+            }
         )
         flash("Something went wrong. Please try again.", "danger")
-        return redirect(url_for("auth.unverified"))
+        return redirect(url_for("auth.unverified_email"))
 
     confirmation_url = url_for(
         "auth.verify_email",
@@ -258,7 +313,7 @@ def resend_verification():
     )
 
     flash("Confirmation email sent. Please check your inbox.", "info")
-    return redirect(url_for("auth.unverified"))
+    return redirect(url_for("auth.unverified_email"))
 
 
 @auth_bp.route("/forgot-password", methods=["GET", "POST"])
@@ -288,11 +343,16 @@ def forgot_password():
 
             try:
                 db.session.commit()
-            except Exception:
+            except Exception as e:
                 db.session.rollback()
-                logger.exception(
-                    "Failed to save password reset token for user=%s",
-                    user.email
+                logger.error(
+                    "Failed to save password reset token for user_id=%s error_type=%s",
+                    user.id,
+                    type(e).__name__,
+                    extra={
+                        "user_id": user.id,
+                        "error_type": type(e).__name__
+                    }
                 )
                 flash("Something went wrong. Please try again.", "danger")
                 return redirect(url_for("auth.forgot_password"))
@@ -348,17 +408,28 @@ def reset_password(token):
 
         try:
             db.session.commit()
-        except Exception:
+        except Exception as e:
             db.session.rollback()
-            logger.exception(
-                "Failed to save new password for user_id=%s", user.id
+            logger.error(
+                "Failed to save new password for user_id=%s error_type=%s",
+                user.id,
+                type(e).__name__,
+                extra={
+                    "user_id": user.id,
+                    "error_type": type(e).__name__
+                }
             )
             flash("Something went wrong. Please try again.", "danger")
             return redirect(url_for("auth.reset_password", token=token))
 
-        logger.info("Password reset completed for user_id=%s", user.id)
+        logger.info(
+            "Password reset completed for user_id=%s",
+            user.id,
+            extra={
+                "user_id": user.id
+            }
+        )
         flash("Password updated successfully. Please log in.", "success")
         return redirect(url_for("auth.login"))
 
     return render_template("auth/reset_password.html", form=form, token=token)
-
