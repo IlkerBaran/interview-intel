@@ -1,0 +1,540 @@
+{% extends "base.html" %}
+{% from "macros.html" import category_badge, urgency_badge %}
+
+{% block title %}Dashboard — Interview Intel{% endblock %}
+
+{% block extra_styles %}
+<style>
+    /* ── PAGE HEADER ── */
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 28px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .welcome-text {
+        font-size: 0.875rem;
+        color: #a89880;
+        margin-top: 3px;
+    }
+
+    /* ── STATS ROW ── */
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 32px;
+    }
+
+    .stat-card {
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 10px;
+        padding: 18px 20px;
+    }
+
+    .stat-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #a89880;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+    }
+
+    .stat-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #1a1208;
+        letter-spacing: -0.5px;
+        line-height: 1;
+    }
+
+    .stat-sub {
+        font-size: 0.75rem;
+        color: #a89880;
+        margin-top: 4px;
+    }
+
+    /* ── TWO COLUMN LAYOUT ── */
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    /* ── SECTION CARD ── */
+    .section-card {
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid #ebe5db;
+    }
+
+    .section-title {
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: #1a1208;
+        margin: 0;
+    }
+
+    .section-link {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #8b5e3c;
+        text-decoration: none;
+        transition: opacity 0.15s;
+    }
+
+    .section-link:hover {
+        opacity: 0.7;
+    }
+
+    /* ── MESSAGE LIST ── */
+    .message-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .message-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 14px 20px;
+        border-bottom: 1px solid #f0ece4;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s ease;
+    }
+
+    .message-item:last-child {
+        border-bottom: none;
+    }
+
+    .message-item:hover {
+        background: #f7f2e8;
+    }
+
+    .message-item-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .message-subject {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #1a1208;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+    }
+
+    .message-date {
+        font-size: 0.75rem;
+        color: #a89880;
+        flex-shrink: 0;
+    }
+
+    .message-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .message-sender {
+        font-size: 0.75rem;
+        color: #746857;
+    }
+
+    /* ── TASK LIST ── */
+    .task-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .task-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 20px;
+        border-bottom: 1px solid #f0ece4;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s ease;
+    }
+
+    .task-item:last-child {
+        border-bottom: none;
+    }
+
+    .task-item:hover {
+        background: #f7f2e8;
+    }
+
+    .task-item.completed .task-name {
+        text-decoration: line-through;
+        color: #a89880;
+    }
+
+    .task-checkbox {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1.5px solid #d9d2c8;
+        background: #f7f2e8;
+        flex-shrink: 0;
+        margin-top: 2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .task-checkbox.done {
+        background: #1a1208;
+        border-color: #1a1208;
+        color: #f7f2e8;
+        font-size: 10px;
+    }
+
+    .task-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .task-name {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #1a1208;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .task-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 3px;
+    }
+
+    /* ── BADGES ── */
+    .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 99px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    .badge-blue   { background: #eff6ff; color: #2563eb; }
+    .badge-green  { background: #f0fdf4; color: #16a34a; }
+    .badge-orange { background: #fff7ed; color: #ea580c; }
+    .badge-gray   { background: #f0ede6; color: #6b5f4f; border: 1px solid #e0d9cf; }
+
+    /* ── EMPTY STATE ── */
+    .empty-state {
+        padding: 36px 20px;
+        text-align: center;
+        color: #a89880;
+    }
+
+    .empty-state-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #746857;
+        margin-bottom: 4px;
+    }
+
+    .empty-state-text {
+        font-size: 0.8rem;
+    }
+
+    .empty-state-link {
+        display: inline-block;
+        margin-top: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #8b5e3c;
+        text-decoration: none;
+    }
+
+    .empty-state-link:hover {
+        text-decoration: underline;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+        .stats-row {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .dashboard-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .stats-row {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+    <!-- ── PAGE HEADER ── -->
+    <div class="dashboard-header">
+        <div>
+            <h1 class="page-title">Dashboard</h1>
+            <p class="welcome-text">Welcome back, {{ current_user.email }}</p>
+        </div>
+        <a href="{{ url_for('messages.new_message') }}" class="btn btn-primary">
+            + Analyze Email
+        </a>
+    </div>
+
+    <!-- ── STATS ROW ── -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <p class="stat-label">Total Emails</p>
+            <p class="stat-value">{{ total_messages }}</p>
+            <p class="stat-sub">analyzed</p>
+        </div>
+
+        <div class="stat-card">
+            <p class="stat-label">Active</p>
+            <p class="stat-value">{{ active_messages }}</p>
+            <p class="stat-sub">in pipeline</p>
+        </div>
+
+        <div class="stat-card">
+            <p class="stat-label">Tasks</p>
+            <p class="stat-value">{{ incomplete_tasks }}</p>
+            <p class="stat-sub">remaining</p>
+        </div>
+
+        <div class="stat-card">
+            <p class="stat-label">Completed</p>
+            <p class="stat-value">{{ completed_tasks }}</p>
+            <p class="stat-sub">tasks done</p>
+        </div>
+    </div>
+
+    <!-- ── APPLICATION STATS ── -->
+    <div class="stats-row" style="margin-bottom:20px;">
+        <div class="stat-card">
+            <p class="stat-label">Total Applications</p>
+            <p class="stat-value">{{ total_applications }}</p>
+            <p class="stat-sub">tracked</p>
+        </div>
+
+        <div class="stat-card">
+            <p class="stat-label">Applied</p>
+            <p class="stat-value">{{ applied_count }}</p>
+            <p class="stat-sub">awaiting response</p>
+        </div>
+
+        <div class="stat-card">
+            <p class="stat-label">Interviewing</p>
+            <p class="stat-value">{{ interviewing_count }}</p>
+            <p class="stat-sub">in process</p>
+        </div>
+
+        <div class="stat-card">
+            <p class="stat-label">Response Rate</p>
+            <p class="stat-value">{{ response_rate }}%</p>
+            <p class="stat-sub">
+                {% if applied_count > 0 %}
+                    {{ interviewing_count + offered_count + rejected_count }} of {{ applied_count }}
+                {% else %}
+                    no applications yet
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <!-- ── OFFER / REJECTED ROW ── -->
+    <div class="stats-row" style="grid-template-columns: repeat(2, 1fr);margin-bottom:32px;">
+        <div class="stat-card">
+            <p class="stat-label">Offered</p>
+            <p class="stat-value" style="color:#16a34a;">{{ offered_count }}</p>
+            <p class="stat-sub">offers received</p>
+        </div>
+
+        <div class="stat-card">
+            <p class="stat-label">Rejected</p>
+            <p class="stat-value" style="color:#6b5f4f;">{{ rejected_count }}</p>
+            <p class="stat-sub">rejections</p>
+        </div>
+    </div>
+
+    <!-- ── MAIN GRID ── -->
+    <div class="dashboard-grid">
+
+        <!-- ── RECENT MESSAGES ── -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2 class="section-title">Recent Emails</h2>
+                <a href="{{ url_for('messages.index') }}" class="section-link">View all →</a>
+            </div>
+
+            {% if recent_messages %}
+                <ul class="message-list">
+                    {% for message in recent_messages %}
+                        <a href="{{ url_for('messages.show_message', message_id=message.id) }}"
+                           class="message-item">
+
+                            <div class="message-item-top">
+                                <span class="message-subject">
+                                    {{ message.subject or "No subject" }}
+                                </span>
+                                <span class="message-date">
+                                    {{ message.created_at.strftime('%b %d') }}
+                                </span>
+                            </div>
+
+                            <div class="message-meta">
+                                {% if message.sender_email %}
+                                    <span class="message-sender">{{ message.sender_email }}</span>
+                                {% endif %}
+
+                                {% if message.analysis_result %}
+                                    {% set cat = message.analysis_result.message_category %}
+                                    {{ category_badge(cat) }}
+
+                                    {% set urg = message.analysis_result.urgency_level %}
+                                    {{ urgency_badge(urg) }}
+                                {% endif %}
+
+                                {% if message.status == "processing" %}
+                                    <span class="badge badge-gray">Processing...</span>
+                                {% elif message.status == "failed" %}
+                                    <span class="badge badge-orange">Failed</span>
+                                {% endif %}
+                            </div>
+                        </a>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="empty-state">
+                    <p class="empty-state-title">No emails yet</p>
+                    <p class="empty-state-text">Paste your first interview email to get started.</p>
+                    <a href="{{ url_for('messages.new_message') }}" class="empty-state-link">
+                        + Analyze your first email
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- ── RECENT TASKS ── -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2 class="section-title">Pending Tasks</h2>
+                <a href="{{ url_for('tasks.show_all_tasks') }}" class="section-link">View all →</a>
+            </div>
+
+            {% if incomplete_tasks_list %}
+                <ul class="task-list">
+                    {% for task in incomplete_tasks_list %}
+                        <a href="{{ url_for('tasks.show_single_task', task_id=task.id) }}"
+                           class="task-item {% if task.is_completed %}completed{% endif %}">
+
+                            <div class="task-checkbox {% if task.is_completed %}done{% endif %}">
+                                {% if task.is_completed %}✓{% endif %}
+                            </div>
+
+                            <div class="task-content">
+                                <p class="task-name">{{ task.task_name }}</p>
+                                <div class="task-meta">
+
+                                    { urgency_badge(task.priority) }}
+
+                                    {% if task.message and task.message.analysis_result %}
+                                        <span style="font-size: 0.75rem; color: #a89880;">
+                                            {{ task.message.analysis_result.company_name or "Unknown company" }}
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="empty-state">
+                    <p class="empty-state-title">No pending tasks</p>
+                    <p class="empty-state-text">Tasks are created automatically when you analyze emails.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- ── APPLICATIONS ── -->
+        <div class="section-card" style="grid-column: 1 / -1;">
+            <div class="section-header">
+                <h2 class="section-title">Application Pipeline</h2>
+                <a href="{{ url_for('applications.index') }}" class="section-link">
+                    View all →
+                </a>
+            </div>
+
+            {% if total_applications > 0 %}
+                <div style="padding:16px 20px;">
+                    <!-- pipeline bar -->
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <a href="{{ url_for('applications.index', status='applied') }}"
+                           class="pipeline-pill">
+                            Applied
+                            <span class="pill-count">{{ applied_count }}</span>
+                        </a>
+                        <a href="{{ url_for('applications.index', status='interviewing') }}"
+                           class="pipeline-pill">
+                            Interviewing
+                            <span class="pill-count">{{ interviewing_count }}</span>
+                        </a>
+                        <a href="{{ url_for('applications.index', status='offered') }}"
+                           class="pipeline-pill">
+                            Offered
+                            <span class="pill-count">{{ offered_count }}</span>
+                        </a>
+                        <a href="{{ url_for('applications.index', status='rejected') }}"
+                           class="pipeline-pill">
+                            Rejected
+                            <span class="pill-count">{{ rejected_count }}</span>
+                        </a>
+                    </div>
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <p class="empty-state-title">No applications yet</p>
+                    <p class="empty-state-text">
+                        Start tracking your job search.
+                    </p>
+                    <a href="{{ url_for('applications.new_application') }}"
+                       class="empty-state-link">
+                        + Add your first application
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+
+    </div>
+
+{% endblock %}
