@@ -63,8 +63,13 @@ def generate_verification_token(user: User) -> str:
     user.token_expires_at = datetime.now(UTC) + timedelta(hours=expiry_hours)
 
     logger.info(
-        "Verification token generated for user=%s expires_at=%s",
-        user.email, user.token_expires_at
+        "Verification token generated for user_id=%s token_expires_at=%s",
+        user.id,
+        user.token_expires_at,
+        extra={
+            "user_id": user.id,
+            "token_expires_at": user.token_expires_at
+        }
     )
 
     return raw_token
@@ -96,8 +101,13 @@ def verify_email_token(token: str) -> tuple[bool, str]:
     # Token is missing expiry or is expired
     if not user.token_expires_at or datetime.now(UTC) > _ensure_aware(user.token_expires_at):
         logger.warning(
-            "verify_email_token: expired or missing expiry for user_id=%s expires_at=%s",
-            user.id, user.token_expires_at
+            "verify_email_token: expired or missing expiry for user_id=%s token_expires_at=%s",
+            user.id,
+            user.token_expires_at,
+            extra={
+                "user_id": user.id,
+                "token_expires_at": user.token_expires_at
+            }
         )
         return False, "Verification link has expired. Please request a new one."
 
@@ -105,7 +115,11 @@ def verify_email_token(token: str) -> tuple[bool, str]:
     user.verification_token = None
     user.token_expires_at = None
 
-    logger.info("Email verified successfully for user_id=%s", user.id)
+    logger.info(
+        "Email verified successfully for user_id=%s",
+        user.id,
+        extra={"user_id": user.id}
+    )
     return True, "Email confirmed successfully. You can now log in."
 
 
@@ -123,8 +137,13 @@ def generate_password_reset_token(user: User) -> str:
     user.password_reset_expires_at = datetime.now(UTC) + timedelta(hours=expiry_hours)
 
     logger.info(
-        "Password reset token generated for user=%s expires_at=%s",
-        user.email, user.password_reset_expires_at
+        "Password reset token generated for user_id=%s password_reset_expires_at=%s",
+        user.id,
+        user.password_reset_expires_at,
+        extra={
+            "user_id": user.id,
+            "password_reset_expires_at": user.password_reset_expires_at
+        }
     )
 
     return raw_token
@@ -155,10 +174,14 @@ def verify_password_reset_token(token: str) -> tuple[bool, str, User | None]:
 
     if not user.password_reset_expires_at or datetime.now(UTC) > _ensure_aware(user.password_reset_expires_at):
         logger.warning(
-            "verify_password_reset_token: expired token for user_id=%s expires_at=%s",
-            user.id, user.password_reset_expires_at
+            "verify_password_reset_token: expired token for user_id=%s password_reset_expires_at=%s",
+            user.id,
+            user.password_reset_expires_at,
+            extra={
+                "user_id": user.id,
+                "password_reset_expires_at": user.password_reset_expires_at
+            }
         )
         return False, "Password reset link has expired. Please request a new one.", None
 
     return True, "Token is valid.", user
-

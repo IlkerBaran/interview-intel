@@ -5,6 +5,8 @@ Handles all outgoing emails for Interview Intel including
 email verification, password reset, and notification emails.
 All sends are fire-and-forget via threading to keep
 request/response cycle fast for the user.
+
+if daemon — dropped emails on shutdown these are recoverable
 """
 
 import resend
@@ -20,8 +22,14 @@ def _send_email_background(api_key: str, params: dict) -> None:
     try:
         resend.api_key = api_key
         resend.Emails.send(params)
-    except Exception:
-        logger.exception("Failed to send email to %s", params.get("to"))
+    except Exception as e:
+        logger.error(
+            "Failed to send email error_type=%s",
+            type(e).__name__,
+            extra={
+                "error_type": type(e).__name__
+            }
+        )
 
 def queue_email(
         to: str,
@@ -37,8 +45,8 @@ def queue_email(
     """
     try:
         # Basic validations
-        if not to:
-            raise ValueError("Recipient email address is missing")
+        if not to or "@" not in to:
+            raise ValueError("Invalid email recipient")
 
         if not subject:
             raise ValueError("Email subject is missing")
@@ -73,6 +81,12 @@ def queue_email(
 
         return True
 
-    except Exception:
-        logger.exception("Failed to start background email send")
+    except Exception as e:
+        logger.error(
+            "Failed to start background email send error_type=%s",
+            type(e).__name__,
+            extra={
+                "error_type": type(e).__name__
+            }
+        )
         return False
