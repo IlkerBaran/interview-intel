@@ -1,0 +1,37 @@
+{# ─────────────────────────────────────────────
+   Reusable Jinja2 macros for Interview Intel.
+   Import in any template with:
+   {% from "macros.html" import category_badge, urgency_badge %}
+───────────────────────────────────────────────── #}
+
+
+{% macro category_badge(category) %}
+    {% if category == 'interview_invitation' %}
+        <span class="badge badge-blue">Interview Invitation</span>
+    {% elif category == 'offer' %}
+        <span class="badge badge-green">Offer</span>
+    {% elif category == 'rejection' %}
+        <span class="badge badge-gray">Rejection</span>
+    {% elif category == 'scheduling' %}
+        <span class="badge badge-blue">Scheduling</span>
+    {% elif category == 'recruiter_outreach' %}
+        <span class="badge badge-blue">Recruiter Outreach</span>
+    {% elif category == 'follow_up' %}
+        <span class="badge badge-gray">Follow-up</span>
+    {% else %}
+        <span class="badge badge-gray">{{ category | replace('_', ' ') | title }}</span>
+    {% endif %}
+{% endmacro %}
+
+
+{% macro urgency_badge(urgency) %}
+    {% if urgency == 'high' %}
+        <span class="badge badge-orange">High</span>
+    {% elif urgency == 'medium' %}
+        <span class="badge badge-blue">Medium</span>
+    {% elif urgency == 'low' %}
+        <span class="badge badge-gray">Low</span>
+    {% else %}
+        <span class="badge badge-gray">{{ urgency | title }}</span>
+    {% endif %}
+{% endmacro %}
