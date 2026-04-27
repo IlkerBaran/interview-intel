@@ -2,24 +2,44 @@ from datetime import datetime, UTC
 from .extensions import db
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from enum import Enum
 
 
-class ApplicationStatus:
-    SAVED = 'SAVED'
-    APPLIED = 'APPLIED'
-    RESPONDED = 'RESPONDED'
-    INTERVIEWING = 'INTERVIEWING'
-    OFFERED = 'OFFERED'
-    REJECTED = 'REJECTED'
+class BaseEnum(str, Enum):
+    @property
+    def label(self):
+        """
+        Generate a display-friendly label for the enum member.
 
-class NotificationType:
-    INTERVIEW_DETECTED = 'INTERVIEW_DETECTED'
-    OFFER_DETECTED = 'OFFER_DETECTED'
-    TASK_DUE = 'TASK_DUE'
-    APPLICATION_UPDATED = 'APPLICATION_UPDATED'
+        Converts enum names like "INTERVIEW_DETECTED"
+        into "Interview Detected" or "SAVED" → "Saved".
+        """
+        return self.name.replace("_", " ").title()
 
 
-class MessageStatus:
+class ApplicationStatus(BaseEnum):
+    """
+    Define the allowed application status values in one place to prevent typos.
+    """
+    SAVED = 'saved'
+    APPLIED = 'applied'
+    REJECTED = 'rejected'
+    INTERVIEWING = 'interviewing'
+    OFFERED = 'offered'
+    WITHDRAWN = 'withdrawn'
+
+
+class NotificationType(BaseEnum):
+    """
+    Define the notification type values in one place to prevent typos.
+    """
+    INTERVIEW_DETECTED = 'interview_detected'
+    OFFER_DETECTED = 'offer_detected'
+    TASK_DUE = 'task_due'
+    APPLICATION_UPDATED = 'application_updated'
+
+
+class MessageStatus(BaseEnum):
     """
     Define the allowed message status values in one place to prevent typos.
     """
@@ -30,7 +50,28 @@ class MessageStatus:
     ARCHIVED = "archived"
 
 
-class TaskPriority:
+class MessageCategory(BaseEnum):
+    """
+    Define the allowed message category values in one place to prevent typos.
+    """
+    INTERVIEW_INVITATION = 'interview_invitation'
+    RECRUITER_OUTREACH = 'recruiter_outreach'
+    REJECTION = 'rejection'
+    SCHEDULING = 'scheduling'
+    OFFER = 'offer'
+    FOLLOW_UP = 'follow_up'
+
+
+class MessageUrgency(BaseEnum):
+    """
+    Define the allowed message urgency values in one place to prevent typos.
+    """
+    LOW = 'low'
+    MEDIUM = 'medium'
+    HIGH = 'high'
+
+
+class TaskPriority(BaseEnum):
     """
     Define the allowed task priority values in one place to prevent typos.
     """
@@ -39,7 +80,7 @@ class TaskPriority:
     HIGH = "high"
 
 
-class AgentRunStatus:
+class AgentRunStatus(BaseEnum):
     """
     Define the allowed agentRun status values in one place to prevent typos.
     """
@@ -150,7 +191,7 @@ class JobApplication(db.Model):
     posting_url = db.Column(db.String(500), nullable=True)
     status = db.Column(db.String(50), nullable=False, default=ApplicationStatus.SAVED, index=True)
     applied_date = db.Column(db.Date, nullable=True)
-    notes = db.Column(db.Text, nullable=True)
+    note = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
     updated_at = db.Column(
