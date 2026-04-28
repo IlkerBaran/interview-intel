@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_wtf.csrf import CSRFError
 
 from app.extensions import db
@@ -19,4 +19,14 @@ def internal_error(error):
 
 @errors_bp.app_errorhandler(CSRFError)
 def handle_csrf_error(error):
-    return render_template("errors/csrf_error.html"), 400
+    """
+    Handle expired or missing CSRF tokens gracefully.
+    Redirects back to referrer with a clear message
+    instead of showing a dead-end error page.
+    """
+    flash("Your session expired — please try again.", "warning")
+
+    referrer = request.referrer
+    if referrer:
+        return redirect(referrer)
+    return redirect(url_for("main.home"))

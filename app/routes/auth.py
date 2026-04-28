@@ -1,7 +1,7 @@
 from werkzeug.security import generate_password_hash, check_password_hash
 import logging
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_user, logout_user, current_user, login_required
 
 from app.extensions import db
@@ -14,7 +14,7 @@ from app.services.auth_service import(
     verify_password_reset_token
 )
 from app.services.email_service import queue_email
-from app.utils import safe_redirect
+from app.utils import safe_redirect, mask_email
 
 
 logger = logging.getLogger(__name__)
@@ -81,13 +81,11 @@ def register():
                     plain=f"Confirm your email by visiting: {confirmation_url}"
                 )
 
-            # same message regardless of verified status
-            # prevent account enumeration attack
+            # same response for all existing emails — prevent enumeration
             flash(
                 "If that email is available you will receive a confirmation link shortly.",
-                "info"
-                )
-
+                "info",
+            )
             return redirect(url_for("auth.login"))
 
         # new user
@@ -198,6 +196,11 @@ def login():
             password_ok = False
 
         if user and password_ok:
+            if not user.is_verified:
+                session["pending_verification_email"] = user.email
+                session["verification_context"] = "login_attempt"
+                return redirect(url_for("auth.unverified"))
+
             login_user(user, form.remember_me.data)
             flash("You have been logged in successfully.", "success")
 
@@ -253,21 +256,24 @@ def verify_email(token):
 
 
 @auth_bp.route("/unverified")
-@login_required
-def unverified_email():
+def unverified():
     """
     Landing page for users who have not yet verified their email.
 
     Shows verification status and resend option.
     Already verified users are redirected to dashboard.
     """
-    if current_user.is_verified:
-        return redirect(url_for('dashboard.index'))
-    return render_template('auth/unverified.html')
+    if current_user.is_authenticated:
+        if current_user.is_verified:
+            return redirect(url_for('dashboard.index'))
+        session["pending_verification_email"] = current_user.email
+        logout_user()
+    context = session.pop("verification_context", None)
+    email = mask_email(session.get("pending_verification_email"))
+    return render_template('auth/unverified.html', verification_context=context, email=email)
 
 
 @auth_bp.route("/resend-verification", methods=["POST"])
-@login_required
 def resend_verification():
     """
     Resend the email verification link to the current user.
@@ -275,10 +281,25 @@ def resend_verification():
     Only accessible to logged-in unverified users.
     Verified users are redirected to dashboard silently.
     """
-    if current_user.is_verified:
-        return redirect(url_for("dashboard.index"))
+    if current_user.is_authenticated:
+        if current_user.is_verified:
+            return redirect(url_for("dashboard.index"))
+        logout_user()
 
-    token = generate_verification_token(current_user)
+    email = session.get("pending_verification_email")
+    if not email:
+        flash("Session expired. Please log in again.", "warning")
+        return redirect(url_for("auth.login"))
+
+    user = db.session.execute(
+        db.select(User).where(User.email == email)
+    ).scalar_one_or_none()
+
+    if not user or user.is_verified:
+        session.pop("pending_verification_email", None)
+        return redirect(url_for("auth.login"))
+
+    token = generate_verification_token(user)
 
     try:
         db.session.commit()
@@ -286,15 +307,15 @@ def resend_verification():
         db.session.rollback()
         logger.error(
             "Failed to regenerate verification token for user_id=%s error_type=%s",
-            current_user.id,
+            user.id,
             type(e).__name__,
             extra={
-                "user_id": current_user.id,
+                "user_id": user.id,
                 "error_type": type(e).__name__
             }
         )
         flash("Something went wrong. Please try again.", "danger")
-        return redirect(url_for("auth.unverified_email"))
+        return redirect(url_for("auth.unverified"))
 
     confirmation_url = url_for(
         "auth.verify_email",
@@ -303,7 +324,7 @@ def resend_verification():
     )
 
     queue_email(
-        to=current_user.email,
+        to=user.email,
         subject="Confirm your Interview Intel account",
         html=render_template(
             "email/confirmation.html",
@@ -313,7 +334,7 @@ def resend_verification():
     )
 
     flash("Confirmation email sent. Please check your inbox.", "info")
-    return redirect(url_for("auth.unverified_email"))
+    return redirect(url_for("auth.unverified"))
 
 
 @auth_bp.route("/forgot-password", methods=["GET", "POST"])

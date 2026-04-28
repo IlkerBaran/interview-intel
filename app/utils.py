@@ -61,6 +61,15 @@ def normalize_email(x):
     return x
 
 
+def mask_email(email):
+    """Return a partially obscured email: j***e@domain.com"""
+    if not email or "@" not in email:
+        return email
+    local, _, domain = email.partition("@")
+    masked = local[0] + "***" + (local[-1] if len(local) > 2 else "")
+    return f"{masked}@{domain}"
+
+
 def safe_redirect(default_endpoint: str):
     """
     Redirect user to the page they originally wanted after login.
