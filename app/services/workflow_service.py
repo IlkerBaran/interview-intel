@@ -2,14 +2,36 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, UTC
 from typing import Optional
+from dataclasses import dataclass, field
+
 
 from app.extensions import db
-from app.models import Message, AnalysisResult, Task, AgentRun, MessageStatus, AgentRunStatus, TaskPriority
+from app.models import(
+    Message,
+    AnalysisResult,
+    Task,
+    AgentRun,
+    MessageStatus,
+    AgentRunStatus,
+    TaskPriority,
+    JobApplication,
+    ApplicationStatus
+)
 from app.services.ml_service import ml_service
 from app.services.llm_service import llm_service
 from app.services.preprocess_language import normalize_text
 
+
 logger = logging.getLogger(__name__)
+
+
+# Structured result for auto-linking (success or fallback candidates)
+@dataclass
+class AutoLinkResult:
+    linked: bool
+    application_id: Optional[int] = None
+    candidates: list = field(default_factory=list)
+
 
 # ≈≈≈≈ backend urgency rules ≈≈≈≈
 # ML predicts urgency also backend ensures overrides for known high-urgency categories
@@ -91,7 +113,7 @@ def process_message_submission(
         raw_text: str,
         subject: Optional[str] = None,
         sender_email: Optional[str] = None,
-) -> Message:
+) -> tuple[Message, AutoLinkResult]:
     """
     Full pipeline: normalize language → ML → LLM → save → tasks.
 
@@ -135,12 +157,24 @@ def process_message_submission(
                 llm_outputs={},
                 tools_used=[],
             )
-            return message
+
+            # ≈≈≈≈ auto-link to job application ≈≈≈≈
+            link_result = _auto_link_applications(
+                message=message,
+                company_name=None,
+                role_title=None,
+                sender_email=sender_email,
+                user_id=user_id,
+            )
+
+            return message, link_result
 
         if detected_lang != "en" and translation_success:
-            # structured logger, queryable in Datadog/ELK
-            logger.info(
-                "Message translated to English.",
+            # translation path is degraded — warn so it's queryable for triage
+            logger.warning(
+                "Message %s translated to English from %s",
+                message.id,
+                detected_lang,
                 extra={
                     "message_id": message.id,
                     "detected_lang": detected_lang,
@@ -155,7 +189,11 @@ def process_message_submission(
             ml_result = ml_service.predict(normalized_text) or {}
             ml_ran = True
         else:
-            logger.warning("ML service not loaded — skipping predictions")
+            logger.warning(
+                "ML service not loaded — skipping predictions for message %s",
+                message.id,
+                extra={"message_id": message.id, "service": "ml_service"}
+            )
 
         # ≈≈≈≈ Backend urgency rule ≈≈≈≈
         category = ml_result.get("category")
@@ -169,7 +207,12 @@ def process_message_submission(
                 ml_result["urgency"] = "high"
                 ml_result["urgency_source"] = "rule_based"
                 logger.debug(
-                    "Urgency overridden to high for category: %s", category
+                    "Urgency overridden to high for message %s",
+                    message.id,
+                    extra={
+                        "message_id": message.id,
+                        "rule_applied": "high_urgency_override"
+                    }
                 )
             else:
                 ml_result["urgency_source"] = "ml_predicted"
@@ -183,8 +226,12 @@ def process_message_submission(
                     ml_result["job_field"] = inherited
                     ml_result["job_field_source"] = "inherited"
                     logger.info(
-                        "Job field inherited from previous message: %s",
-                        inherited
+                        "Job field inherited from prior message for message %s",
+                        message.id,
+                        extra={
+                            "message_id": message.id,
+                            "job_field_source": "inherited"
+                        }
                     )
                 else:
                     ml_result["job_field_source"] = "ml_predicted"
@@ -200,12 +247,22 @@ def process_message_submission(
             try:
                 details = llm_service.extract_interview_details(normalized_text)
                 llm_ran = True
-            except Exception:
-                logger.exception(
-                    "LLM extraction failed for message %s", message.id
+            except Exception as e:
+                logger.error(
+                    "LLM extraction failed for message %s — %s",
+                    message.id,
+                    type(e).__name__,
+                    extra={
+                        "message_id": message.id,
+                        "error_type": type(e).__name__
+                    }
                 )
         else:
-            logger.warning("LLM service not loaded — skipping extraction")
+            logger.warning(
+                "LLM service not loaded — skipping extraction for message %s",
+                message.id,
+                extra={"message_id": message.id, "service": "llm_service"}
+            )
 
         # use final_category after all enrichment — never use stale category
         final_category = ml_result.get("category")
@@ -245,26 +302,47 @@ def process_message_submission(
             tools_used=tools_used,
         )
 
+        # ≈≈≈≈ auto-link to job application ≈≈≈≈
+        link_result = _auto_link_applications(
+            message=message,
+            company_name=details.get("company_name"),
+            role_title=details.get("role_title"),
+            sender_email=sender_email,
+            user_id=user_id,
+        )
+
         logger.info(
-            "Message processed successfully.",
+            "Pipeline completed for message %s",
+            message.id,
             extra={"message_id": message.id}
         )
-        return message
+        return message, link_result
 
-    except Exception:
+    except Exception as e:
         # if it fails mark message as failed
-        logger.exception(
-            "Pipeline failed.",
-            extra={"message_id": message.id}
+        logger.error(
+            "Pipeline failed for message %s — %s",
+            message.id,
+            type(e).__name__,
+            extra={
+                "message_id": message.id,
+                "error_type": type(e).__name__
+            }
         )
 
         try:
             message.status = MessageStatus.FAILED
             db.session.commit()
-        except Exception:
+        except Exception as inner_e:
             db.session.rollback()
-            logger.exception(
-                "Could not update message %s status to FAILED", message.id
+            logger.error(
+                "Could not update message %s status to FAILED — %s",
+                message.id,
+                type(inner_e).__name__,
+                extra={
+                    "message_id": message.id,
+                    "error_type": type(inner_e).__name__
+                }
             )
         raise
 
@@ -288,12 +366,23 @@ def _save_message(
         )
         db.session.add(message)
         db.session.commit()
-        logger.info("Message %s saved", message.id)
+        logger.info(
+            "Message %s saved",
+            message.id,
+            extra={"message_id": message.id}
+        )
         return message
 
-    except Exception:
+    except Exception as e:
         db.session.rollback()
-        logger.exception("Failed to save message")
+        logger.error(
+            "Failed to save message — %s",
+            type(e).__name__,
+            extra={
+                "user_id": user_id,
+                "error_type": type(e).__name__
+            }
+        )
         raise
 
 
@@ -362,7 +451,12 @@ def _save_pipeline_results(
                 db.session.add(task)
             logger.info(
                 "Generated %d tasks for message %s",
-                len(TASK_RULES[final_category]), message.id
+                len(TASK_RULES[final_category]),
+                message.id,
+                extra={
+                    "message_id": message.id,
+                    "task_count": len(TASK_RULES[final_category])
+                }
             )
 
         # ≈≈≈≈ agent run ≈≈≈≈
@@ -388,12 +482,17 @@ def _save_pipeline_results(
 
         # ≈≈≈≈ single commit for everything ≈≈≈≈
         db.session.commit()
-        logger.info("Pipeline results saved for message %s", message.id)
 
-    except Exception:
+    except Exception as e:
         db.session.rollback()
-        logger.exception(
-            "Failed to save pipeline results for message %s", message.id
+        logger.error(
+            "Failed to save pipeline results for message %s — %s",
+            message.id,
+            type(e).__name__,
+            extra={
+                "message_id": message.id,
+                "error_type": type(e).__name__
+            }
         )
         raise
 
@@ -468,8 +567,16 @@ def _run_llm_parallel(
             key = futures[future]
             try:
                 outputs[key] = future.result()
-            except Exception:
-                logger.exception("LLM parallel task failed: %s", key)
+            except Exception as e:
+                logger.error(
+                    "LLM parallel task failed: %s — %s",
+                    key,
+                    type(e).__name__,
+                    extra={
+                        "task_key": key,
+                        "error_type": type(e).__name__
+                    }
+                )
 
     return outputs
 
@@ -511,6 +618,226 @@ def _inherit_job_field(
 
         return previous.job_field if previous else None
 
-    except Exception:
-        logger.exception("Failed to query job field inheritance")
+    except Exception as e:
+        logger.error(
+            "Failed to query job field inheritance — %s",
+            type(e).__name__,
+            extra={"error_type": type(e).__name__}
+        )
         return None
+
+
+def _auto_link_applications(
+        message: Message,
+        company_name: Optional[str],
+        role_title: Optional[str],
+        sender_email: Optional[str],
+        user_id: int
+) -> AutoLinkResult:
+    """
+    Auto-link a processed message to a JobApplication using multi-signal scoring
+    with sender history as a tie-breaker only. if it fails fallback to Manual-Review.
+
+    Stage 1 — score every application on factual signals (max = 5):
+        +2  company name exact match (case-insensitive)
+        +1  company name partial match (one contains the other)
+        +2  role title exact match (case-insensitive)
+        +1  role title partial match
+        +1  status is APPLIED or INTERVIEWING
+        threshold = 3 (company alone can never reach this)
+
+    Stage 2 — single winner above threshold → link it.
+
+    Stage 3 — tie → check sender history to break it:
+        which tied application has prior messages from this sender?
+        exactly one → link it.
+        still tied (recruiter handles multiple roles) → return candidates.
+
+    Returns AutoLinkResult:
+        linked=True   → message.job_application_id is set and committed.
+        linked=False  → candidates list is populated for the UI to show.
+    """
+    if not company_name or not company_name.strip():
+        logger.debug(
+            "Auto-link skipped for message_id %s: no company name extracted",
+            message.id,
+            extra={"message_id": message.id}
+        )
+        return AutoLinkResult(linked=False)
+
+    try:
+        needle_company = company_name.strip().lower()
+        needle_role = role_title.strip().lower() if role_title else None
+        ACTIVE_STATUSES = {ApplicationStatus.APPLIED, ApplicationStatus.INTERVIEWING}
+
+        # Pre-filter applications by company name before Python scoring.
+        # Checks both directions so "Apple" matches "Apple Inc."
+        # and "Apple Inc." matches "Apple".
+        # Verified to compile to LIKE with || concatenation on PostgreSQL and SQLite.
+        company_lower = db.func.lower(JobApplication.company)
+        applications = db.session.execute(
+            db.select(JobApplication).where(
+                JobApplication.user_id == user_id,
+                db.or_(
+                    company_lower.contains(needle_company),
+                    db.literal(needle_company).contains(company_lower),
+                ),
+            )
+        ).scalars().all()
+
+        if not applications:
+            return AutoLinkResult(linked=False)
+
+        # ── stage 1: score on factual signals ──
+        score_list = []
+        for app in applications:
+            score = 0
+            haystack_company = app.company.lower().strip()
+
+            if needle_company == haystack_company:
+                score += 2
+            elif needle_company in haystack_company or haystack_company in needle_company:
+                score += 1
+
+            # skip role + status scoring entirely if company didn't match at all
+            # prevents a role-only match accidentally crossing the threshold
+            if score == 0:
+                continue
+
+            if needle_role and app.role:
+                haystack_role = app.role.lower().strip()
+                if needle_role == haystack_role:
+                    score += 2
+                elif needle_role in haystack_role or haystack_role in needle_role:
+                    score += 1
+
+            if app.status in ACTIVE_STATUSES:
+                score += 1
+
+            score_list.append((score, app))
+
+        if not score_list:
+            logger.debug(
+                "Auto-link: no company match for message %s",
+                message.id,
+                extra={"message_id": message.id}
+            )
+            return AutoLinkResult(linked=False)
+
+        top_score = max(s for s, _ in score_list)
+
+        if top_score < 3:
+            logger.debug(
+                "Auto-link: best score: %d below threshold for message %s: skipping",
+                top_score, message.id,
+                extra={
+                    "top_score": top_score,
+                    "message_id": message.id
+                }
+            )
+            return AutoLinkResult(linked=False)
+
+        top_matches = [app for score, app in score_list if score == top_score]
+
+        # ── stage 2: single winner ──
+        if len(top_matches) == 1:
+            matched = top_matches[0]
+            message.job_application_id = matched.id
+            db.session.commit()
+            logger.info(
+                "Auto-linked message %s to application %s with score %d",
+                message.id,
+                matched.id,
+                top_score,
+                extra={
+                    "message_id": message.id,
+                    "application_id": matched.id,
+                    "score": top_score,
+                    "linked": True,
+                }
+            )
+            return AutoLinkResult(linked=True, application_id=matched.id)
+
+        # ── stage 3: tie — sender history as tie-breaker only ──
+        logger.debug(
+            "Auto-link: tie at score %d for message %s — checking sender history",
+            top_score,
+            message.id,
+            extra={
+                "top_score": top_score,
+                "message_id": message.id
+            }
+        )
+
+        if sender_email:
+            # Single batched query — distinct application_ids that have prior
+            # messages from this sender. Replaces N+1 loop and explicitly scopes
+            # by user_id for defense-in-depth.
+            top_match_ids = [app.id for app in top_matches]
+            prior_app_ids = set(db.session.execute(
+                db.select(Message.job_application_id)
+                .where(
+                    Message.user_id == user_id,
+                    Message.job_application_id.in_(top_match_ids),
+                    Message.sender_email == sender_email,
+                    Message.id != message.id,
+                )
+                .distinct()
+            ).scalars().all())
+
+            history_matches = [app for app in top_matches if app.id in prior_app_ids]
+
+            if len(history_matches) == 1:
+                matched = history_matches[0]
+                message.job_application_id = matched.id
+                db.session.commit()
+                logger.info(
+                    "Auto-linked message %s → application %s via sender history tie-break",
+                    message.id,
+                    matched.id,
+                    extra={
+                        "message_id": message.id,
+                        "application_id": matched.id,
+                        "linked": True,
+                        "tie_break": "sender_history"
+                    }
+                )
+                return AutoLinkResult(linked=True, application_id=matched.id)
+
+            if len(history_matches) > 1:
+                logger.debug(
+                    "Auto-link: sender history matched %d applications for message %s still ambiguous",
+                    len(history_matches),
+                    message.id,
+                    extra={
+                        "history_matches_count": len(history_matches),
+                        "message_id": message.id
+                    }
+                )
+
+        # tie unresolved — return top candidates for the user to pick
+        candidates = sorted(score_list, key=lambda x: x[0], reverse=True)[:3]
+        logger.info(
+            "Auto-link: returning %d candidates for manual selection (message %s)",
+            len(candidates),
+            message.id,
+            extra={
+                "message_id": message.id,
+                "candidate_count": len(candidates),
+                "linked": False
+            }
+        )
+        return AutoLinkResult(linked=False, candidates=candidates)
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(
+            "Auto-link failed for message %s rolling back error_type: %s",
+            message.id,
+            type(e).__name__,
+            extra= {
+                "message_id": message.id,
+                "error_type": type(e).__name__
+            }
+        )
+        return AutoLinkResult(linked=False)
