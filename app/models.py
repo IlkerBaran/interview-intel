@@ -29,6 +29,19 @@ class ApplicationStatus(BaseEnum):
     WITHDRAWN = 'withdrawn'
 
 
+# ≈≈≈≈ ApplicationStatus rule sets ≈≈≈≈
+ACTIVE_APPLICATION_STATUSES = frozenset({
+    ApplicationStatus.APPLIED,
+    ApplicationStatus.INTERVIEWING
+})
+
+LOCKED_APPLICATION_STATUSES = frozenset({
+    ApplicationStatus.SAVED,
+    ApplicationStatus.OFFERED,
+    ApplicationStatus.WITHDRAWN
+})
+
+
 class NotificationType(BaseEnum):
     """
     Define the notification type values in one place to prevent typos.

@@ -4,7 +4,6 @@ from datetime import datetime, UTC
 from typing import Optional
 from dataclasses import dataclass, field
 
-
 from app.extensions import db
 from app.models import(
     Message,
@@ -15,7 +14,9 @@ from app.models import(
     AgentRunStatus,
     TaskPriority,
     JobApplication,
-    ApplicationStatus
+    ApplicationStatus,
+    ACTIVE_APPLICATION_STATUSES,
+    LOCKED_APPLICATION_STATUSES
 )
 from app.services.ml_service import ml_service
 from app.services.llm_service import llm_service
@@ -107,6 +108,26 @@ TASK_RULES = {
         }
     ]
 }
+
+
+# ≈≈≈≈ status auto-update rules ≈≈≈≈
+# maps email category → the application status it should trigger
+STATUS_MAP = {
+    "interview_invitation": ApplicationStatus.INTERVIEWING,
+    "offer":                ApplicationStatus.OFFERED,
+    "rejection":            ApplicationStatus.REJECTED,
+}
+
+# forward-only rank for normal progression
+# Active applications can progress into OFFERED
+# SAVED and WITHDRAWN are intentionally absent and never auto-updated
+# REJECTED is intentionally absent and handled as a special case above rank logic
+STATUS_RANK = {
+    ApplicationStatus.APPLIED:      1,
+    ApplicationStatus.INTERVIEWING: 2,
+    ApplicationStatus.OFFERED:      3,
+}
+
 
 def process_message_submission(
         user_id: int,
@@ -299,7 +320,7 @@ def process_message_submission(
             details=details,
             detected_lang=detected_lang,
             llm_outputs=llm_outputs,
-            tools_used=tools_used,
+            tools_used=tools_used
         )
 
         # ≈≈≈≈ auto-link to job application ≈≈≈≈
@@ -309,6 +330,7 @@ def process_message_submission(
             role_title=details.get("role_title"),
             sender_email=sender_email,
             user_id=user_id,
+            category=final_category
         )
 
         logger.info(
@@ -632,7 +654,8 @@ def _auto_link_applications(
         company_name: Optional[str],
         role_title: Optional[str],
         sender_email: Optional[str],
-        user_id: int
+        user_id: int,
+        category: Optional[str]
 ) -> AutoLinkResult:
     """
     Auto-link a processed message to a JobApplication using multi-signal scoring
@@ -743,6 +766,7 @@ def _auto_link_applications(
         if len(top_matches) == 1:
             matched = top_matches[0]
             message.job_application_id = matched.id
+            status_updated, reason = _auto_update_status(matched, category)
             db.session.commit()
             logger.info(
                 "Auto-linked message %s to application %s with score %d",
@@ -790,6 +814,7 @@ def _auto_link_applications(
             if len(history_matches) == 1:
                 matched = history_matches[0]
                 message.job_application_id = matched.id
+                status_updated, reason = _auto_update_status(matched, category)
                 db.session.commit()
                 logger.info(
                     "Auto-linked message %s → application %s via sender history tie-break",
@@ -841,3 +866,53 @@ def _auto_link_applications(
             }
         )
         return AutoLinkResult(linked=False)
+
+
+def _auto_update_status(
+        application: JobApplication,
+        category: Optional[str]
+) -> tuple[bool, str]:
+    """
+    Auto-update a JobApplication status based on the linked email category.
+
+    Gate: skip entirely if application is not active:
+        SAVED       = bookmarked only, user hasn't engaged yet
+        OFFERED     = terminal and locked
+        WITHDRAWN   = user-only action, never touched by the pipeline
+
+    REJECTED special case:
+        Always applies on active applications regardless of current rank.
+        A company can reject at any stage (APPLIED or INTERVIEWING).
+
+    Forward-only rank check for everything else:
+        APPLIED → INTERVIEWING allowed (rank 1 → rank 2)
+        APPLIED → OFFERED allowed (rank 1 → rank 3)
+        INTERVIEWING → OFFERED allowed (rank 2 → rank 3)
+        INTERVIEWING → INTERVIEWING blocked (same rank)
+
+    Returns:
+        (True,  "updated")      status was changed
+        (False, "no_mapping")   category not in STATUS_MAP
+        (False, "not_active")   application is SAVED, OFFERED, or WITHDRAWN
+        (False, "same_rank")    new rank does not exceed current rank
+    """
+    new_status = STATUS_MAP.get(category)
+
+    if not new_status:
+        return False, "no_mapping"
+
+    if application.status not in ACTIVE_APPLICATION_STATUSES:
+        return False, "not_active"
+
+    if new_status == ApplicationStatus.REJECTED:
+        application.status = ApplicationStatus.REJECTED
+        return True, "updated"
+
+    current_rank = STATUS_RANK.get(application.status, 0)
+    new_rank = STATUS_RANK.get(new_status, 0)
+
+    if new_rank > current_rank:
+        application.status = new_status
+        return True, "updated"
+
+    return False, "same_rank"
