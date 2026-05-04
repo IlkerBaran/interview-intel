@@ -32,6 +32,7 @@ class AutoLinkResult:
     linked: bool
     application_id: Optional[int] = None
     candidates: list = field(default_factory=list)
+    application: Optional[JobApplication] = None
 
 
 # ≈≈≈≈ backend urgency rules ≈≈≈≈
@@ -186,6 +187,7 @@ def process_message_submission(
                 role_title=None,
                 sender_email=sender_email,
                 user_id=user_id,
+                category=None
             )
 
             return message, link_result
@@ -288,6 +290,29 @@ def process_message_submission(
         # use final_category after all enrichment — never use stale category
         final_category = ml_result.get("category")
 
+        # ≈≈≈≈ auto-link to job application ≈≈≈≈
+        # Auto-link must happen before parallel LLM enrichment so linked
+        # application data can be used as stronger LLM context.
+        link_result = _auto_link_applications(
+            message=message,
+            company_name=details.get("company_name"),
+            role_title=details.get("role_title"),
+            sender_email=sender_email,
+            user_id=user_id,
+            category=final_category
+        )
+
+        # ≈≈≈≈ LLM context upgrade ≈≈≈≈
+        # Prefer user-saved JobApplication data when auto-link succeeds.
+        # Fall back to extracted/predicted pipeline values when there is no match.
+        matched_application = link_result.application
+
+        llm_company_name = (matched_application and matched_application.company) or details.get("company_name")
+        llm_role_title = (matched_application and matched_application.role) or details.get("role_title")
+        llm_job_field = (matched_application and matched_application.job_field) or ml_result.get("job_field")
+        llm_interview_stage = details.get("interview_stage")
+        llm_interview_format = details.get("interview_format")
+
         # ≈≈≈≈ LLM enrichment (parallel) ≈≈≈≈
         # 5 independent calls run concurrently
         # Anthropic SDK client is thread-safe for concurrent requests
@@ -296,11 +321,11 @@ def process_message_submission(
             llm_outputs = _run_llm_parallel(
                 normalized_text=normalized_text,
                 category=final_category,
-                role_title=details.get("role_title"),
-                company_name=details.get("company_name"),
-                interview_stage=details.get("interview_stage"),
-                interview_format=details.get("interview_format"),
-                job_field=ml_result.get("job_field")
+                role_title=llm_role_title,
+                company_name=llm_company_name,
+                interview_stage=llm_interview_stage,
+                interview_format=llm_interview_format,
+                job_field=llm_job_field
             )
 
         # track what actually ran for honest agent logging
@@ -321,16 +346,6 @@ def process_message_submission(
             detected_lang=detected_lang,
             llm_outputs=llm_outputs,
             tools_used=tools_used
-        )
-
-        # ≈≈≈≈ auto-link to job application ≈≈≈≈
-        link_result = _auto_link_applications(
-            message=message,
-            company_name=details.get("company_name"),
-            role_title=details.get("role_title"),
-            sender_email=sender_email,
-            user_id=user_id,
-            category=final_category
         )
 
         logger.info(
@@ -696,7 +711,7 @@ def _auto_link_applications(
         # Pre-filter applications by company name before Python scoring.
         # Checks both directions so "Apple" matches "Apple Inc."
         # and "Apple Inc." matches "Apple".
-        # Verified to compile to LIKE with || concatenation on PostgreSQL and SQLite.
+        # Verified to compile to LIKE with || concatenation on PostgresSQL and SQLite.
         company_lower = db.func.lower(JobApplication.company)
         applications = db.session.execute(
             db.select(JobApplication).where(
@@ -780,7 +795,7 @@ def _auto_link_applications(
                     "linked": True,
                 }
             )
-            return AutoLinkResult(linked=True, application_id=matched.id)
+            return AutoLinkResult(linked=True, application_id=matched.id, application=matched)
 
         # ── stage 3: tie — sender history as tie-breaker only ──
         logger.debug(
@@ -827,7 +842,7 @@ def _auto_link_applications(
                         "tie_break": "sender_history"
                     }
                 )
-                return AutoLinkResult(linked=True, application_id=matched.id)
+                return AutoLinkResult(linked=True, application_id=matched.id, application=matched)
 
             if len(history_matches) > 1:
                 logger.debug(
