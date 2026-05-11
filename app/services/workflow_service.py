@@ -5,7 +5,7 @@ from typing import Optional
 from dataclasses import dataclass, field
 
 from app.extensions import db
-from app.models import(
+from app.models import (
     Message,
     AnalysisResult,
     Task,
@@ -16,7 +16,10 @@ from app.models import(
     JobApplication,
     ApplicationStatus,
     ACTIVE_APPLICATION_STATUSES,
-    LOCKED_APPLICATION_STATUSES
+    # Reserved for route guards and UI status checks
+    LOCKED_APPLICATION_STATUSES,
+    NotificationType,
+    Notification
 )
 from app.services.ml_service import ml_service
 from app.services.llm_service import llm_service
@@ -28,11 +31,19 @@ logger = logging.getLogger(__name__)
 
 # Structured result for auto-linking (success or fallback candidates)
 @dataclass
+class LinkCandidate:
+    application: JobApplication
+    score: int
+
+
+@dataclass
 class AutoLinkResult:
     linked: bool
     application_id: Optional[int] = None
-    candidates: list = field(default_factory=list)
+    candidates: list[LinkCandidate] = field(default_factory=list)
     application: Optional[JobApplication] = None
+    status_updated: bool = False
+    status_reason: str = ""
 
 
 # ≈≈≈≈ backend urgency rules ≈≈≈≈
@@ -129,6 +140,26 @@ STATUS_RANK = {
     ApplicationStatus.OFFERED:      3,
 }
 
+APPLICATION_FETCH_LIMIT = 50
+
+# ≈≈≈≈ notification rules ≈≈≈≈
+# maps application status → (notification_type, template, fallback)
+# only INTERVIEWING and OFFERED fire notifications
+# REJECTED, TASK_DUE, APPLICATION_UPDATED are separate future features
+NOTIFICATION_MAP = {
+    ApplicationStatus.INTERVIEWING: (
+        NotificationType.INTERVIEW_DETECTED,
+        "Interview detected for {company} — {role}",
+        "Interview invitation detected"
+    ),
+
+    ApplicationStatus.OFFERED: (
+        NotificationType.OFFER_DETECTED,
+        "Offer detected for {company} — {role}",
+        "Offer detected"
+    )
+}
+
 
 def process_message_submission(
         user_id: int,
@@ -189,6 +220,8 @@ def process_message_submission(
                 user_id=user_id,
                 category=None
             )
+
+            _maybe_notify(link_result, user_id)
 
             return message, link_result
 
@@ -353,6 +386,10 @@ def process_message_submission(
             message.id,
             extra={"message_id": message.id}
         )
+
+        # in-app notification
+        _maybe_notify(link_result, user_id)
+
         return message, link_result
 
     except Exception as e:
@@ -720,7 +757,7 @@ def _auto_link_applications(
                     company_lower.contains(needle_company),
                     db.literal(needle_company).contains(company_lower),
                 ),
-            )
+            ).limit(APPLICATION_FETCH_LIMIT)
         ).scalars().all()
 
         if not applications:
@@ -781,8 +818,7 @@ def _auto_link_applications(
         if len(top_matches) == 1:
             matched = top_matches[0]
             message.job_application_id = matched.id
-            status_updated, reason = _auto_update_status(matched, category)
-            db.session.commit()
+            status_updated, status_reason = _auto_update_status(matched, category)
             logger.info(
                 "Auto-linked message %s to application %s with score %d",
                 message.id,
@@ -795,7 +831,13 @@ def _auto_link_applications(
                     "linked": True,
                 }
             )
-            return AutoLinkResult(linked=True, application_id=matched.id, application=matched)
+            return AutoLinkResult(
+                linked=True,
+                application_id=matched.id,
+                application=matched,
+                status_updated=status_updated,
+                status_reason=status_reason
+            )
 
         # ── stage 3: tie — sender history as tie-breaker only ──
         logger.debug(
@@ -829,8 +871,7 @@ def _auto_link_applications(
             if len(history_matches) == 1:
                 matched = history_matches[0]
                 message.job_application_id = matched.id
-                status_updated, reason = _auto_update_status(matched, category)
-                db.session.commit()
+                status_updated, status_reason = _auto_update_status(matched, category)
                 logger.info(
                     "Auto-linked message %s → application %s via sender history tie-break",
                     message.id,
@@ -842,7 +883,13 @@ def _auto_link_applications(
                         "tie_break": "sender_history"
                     }
                 )
-                return AutoLinkResult(linked=True, application_id=matched.id, application=matched)
+                return AutoLinkResult(
+                    linked=True,
+                    application_id=matched.id,
+                    application=matched,
+                    status_updated=status_updated,
+                    status_reason=status_reason
+                )
 
             if len(history_matches) > 1:
                 logger.debug(
@@ -856,7 +903,10 @@ def _auto_link_applications(
                 )
 
         # tie unresolved — return top candidates for the user to pick
-        candidates = sorted(score_list, key=lambda x: x[0], reverse=True)[:3]
+        candidates = [
+            LinkCandidate(application=app, score=score)
+            for score, app in sorted(score_list, key=lambda x: x[0], reverse=True)[:3]
+        ]
         logger.info(
             "Auto-link: returning %d candidates for manual selection (message %s)",
             len(candidates),
@@ -931,3 +981,71 @@ def _auto_update_status(
         return True, "updated"
 
     return False, "same_rank"
+
+def _create_notification(
+        user_id: int,
+        application: JobApplication
+) -> None:
+    """
+    Create an in-app notification based on the current application status.
+
+    Only fires for INTERVIEWING and OFFERED — other statuses are ignored.
+    Uses app.company and app.role — user-entered values, never LLM text.
+    Falls back to a generic message if company or role is missing.
+    Truncates to 300 characters safely.
+    Does commit — notification lives in its own transaction.
+    Failure is isolated — logs error and never raises so a broken
+    notification never breaks the pipeline.
+    """
+    mapping = NOTIFICATION_MAP.get(application.status)
+
+    if not mapping:
+        return
+
+    notification_type, template, fallback = mapping
+
+    # use template if both fields available, fallback if either is missing
+    if application.company and application.role:
+        message_text = template.format(
+            company=application.company,
+            role=application.role
+        )
+    else:
+        message_text = fallback
+
+    # safety truncate — Notification.message is String(300)
+    if len(message_text) > 300:
+        message_text = message_text[:297] + "..."
+
+    try:
+        notification = Notification(
+            user_id=user_id,
+            message=message_text,
+            notification_type=notification_type,
+            is_read=False
+        )
+        db.session.add(notification)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(
+            "Failed to create notification for user %s error_type %s",
+            user_id,
+            type(e).__name__,
+            extra= {
+                "user_id": user_id,
+                "error_type": type(e).__name__
+            }
+        )
+
+
+def _maybe_notify(link_result: AutoLinkResult, user_id: int) -> None:
+    if (
+        link_result.linked
+        and link_result.status_updated
+        and link_result.application
+    ):
+        _create_notification(
+            user_id=user_id,
+            application=link_result.application,
+        )
