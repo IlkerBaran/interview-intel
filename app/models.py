@@ -329,13 +329,18 @@ class Notification(db.Model):
 
     # data columns
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
 
     message = db.Column(db.String(300), nullable=False)
     notification_type = db.Column(db.String(50), nullable=False, index=True)
     is_read = db.Column(db.Boolean, nullable=False, default=False)
 
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+
+    # Speeds up queries that fetch unread notifications for a specific user
+    __table_args__ = (
+        db.Index('ix_notifications_user_id_is_read', 'user_id', 'is_read'),
+    )
 
     user = db.relationship(
         'User',
@@ -344,7 +349,7 @@ class Notification(db.Model):
 
     # debugging purpose for this table
     def __repr__(self):
-        return f'<Notification {self.type} - read={self.is_read}>'
+        return f'<Notification {self.notification_type} - read={self.is_read}>'
 
 
 class AnalysisResult(db.Model):

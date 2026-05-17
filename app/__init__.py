@@ -2,9 +2,12 @@ import os
 import logging
 
 from flask import Flask
+from flask_login import current_user
+from sqlalchemy import func
+
 from .extensions import db, migrate, login_manager, csrf
 from .routes import register_blueprints
-from .models import User, Message, Task, AnalysisResult
+from .models import User, Message, Task, AnalysisResult, Notification
 from .services.ml_service import ml_service
 from .services.llm_service import llm_service
 from config import config_by_name
@@ -80,6 +83,19 @@ def create_app():
         response.headers['X-Frame-Options'] = 'SAMEORIGIN'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         return response
+
+    # Provides unread_count globally to templates for displaying the notification badge
+    @app.context_processor
+    def inject_unread_notification_count():
+        if not current_user.is_authenticated or not current_user.is_verified:
+            return {"unread_count": 0}
+
+        count = db.session.scalar(
+            db.select(func.count(Notification.id))
+            .where(Notification.user_id == current_user.id)
+            .where(Notification.is_read.is_(False))
+        )
+        return {"unread_count": count or 0}
 
 
     # ≈≈≈≈ load Ml models once at startup ≈≈≈≈
