@@ -338,8 +338,10 @@ class Notification(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
     # Speeds up queries that fetch unread notifications for a specific user
+    # and the user-scoped, created_at-ordered cursor pagination on the list page.
     __table_args__ = (
         db.Index('ix_notifications_user_id_is_read', 'user_id', 'is_read'),
+        db.Index('ix_notifications_user_id_created_at', 'user_id', 'created_at')
     )
 
     user = db.relationship(
