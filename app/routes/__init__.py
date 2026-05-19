@@ -5,6 +5,7 @@ from .tasks import tasks_bp
 from .auth import auth_bp
 from .errors import errors_bp
 from .applications import applications_bp
+from .notifications import notifications_bp
 
 def register_blueprints(app):
     """
@@ -20,3 +21,4 @@ def register_blueprints(app):
     app.register_blueprint(auth_bp)
     app.register_blueprint(errors_bp)
     app.register_blueprint(applications_bp)
+    app.register_blueprint(notifications_bp)
