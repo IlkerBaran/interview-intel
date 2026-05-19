@@ -1,0 +1,34 @@
+{# Notification rows. Shared by notifications/index.html and the
+   notifications.load_more_notifications endpoint so card markup
+   lives in exactly one place. <time datetime> is an absolute ISO
+   value; notifications.js rewrites the text to a relative label
+   on load. The inner text is a readable absolute fallback for
+   JS-disabled clients. #}
+{% for n in notifications %}
+    <button type="button"
+            class="notif-card {{ 'unread' if not n.is_read else 'read' }}"
+            data-id="{{ n.id }}"
+            data-url="{{ url_for('notifications.mark_read', notification_id=n.id) }}">
+        <span class="notif-dot" aria-hidden="true"></span>
+        <span class="notif-body">
+            <span class="notif-message">{{ n.message }}</span>
+            <span class="notif-meta">
+                {% if n.notification_type == 'interview_detected' %}
+                    <span class="badge badge-blue">Interview</span>
+                {% elif n.notification_type == 'offer_detected' %}
+                    <span class="badge badge-green">Offer</span>
+                {% elif n.notification_type == 'task_due' %}
+                    <span class="badge badge-orange">Task Due</span>
+                {% elif n.notification_type == 'application_updated' %}
+                    <span class="badge badge-gray">Application</span>
+                {% else %}
+                    <span class="badge badge-gray">{{ n.notification_type | replace('_', ' ') | title }}</span>
+                {% endif %}
+                <time class="notif-time"
+                      datetime="{{ n.created_at.isoformat() }}">
+                    {{ n.created_at.strftime('%b %d, %Y %H:%M') }}
+                </time>
+            </span>
+        </span>
+    </button>
+{% endfor %}
