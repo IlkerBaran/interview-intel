@@ -63,7 +63,7 @@ def new_message():
 
     if form.validate_on_submit():
         try:
-            message = process_message_submission(
+            message, link_result = process_message_submission(
                 user_id=current_user.id,
                 raw_text=form.raw_text.data,
                 subject=form.subject.data or None,
