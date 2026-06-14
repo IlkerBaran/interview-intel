@@ -58,6 +58,30 @@ class Config:
     EMAIL_VERIFICATION_TOKEN_EXPIRY_HOURS = 24
     PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 1
 
+    # ≈≈≈≈ Celery / Redis config ≈≈≈≈
+    # Two separate env vars even though both target the same local Redis today,
+    # so broker/results can later split onto different DBs or instances by env
+    # only - no code changes. (Numbered-DB split is not real security separation,
+    # It helps organize data; real security separation = separate instances.)
+    CELERY = {
+        "broker_url": os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
+        "result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1"),
+        # json: blocks pickle RCE(Remote Code Execution) and rules out ORM-object args.
+        # JSON makes the format safer, but it does not stop you from sending huge data
+        # so small/ID-sized messages stay a convention.
+        "task_serializer": "json",
+        "result_serializer": "json",
+        "accept_content": ["json"],
+        # Explicitly keep Celery's startup retry behavior.
+        # In Celery 5.x this avoids the warning about the behavior changing in Celery 6.0.
+        "broker_connection_retry_on_startup": True,
+        # result_expires: left at Celery's default (Redis applies it as a per-key
+        # TTL(Time To Live)).
+        # Tune at the pre-production gate;
+        # set ignore_result=True per-task for
+        # fire-and-forget work to save Redis memory(email, Stage 2).
+    }
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

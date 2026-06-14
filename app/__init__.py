@@ -10,6 +10,7 @@ from .routes import register_blueprints
 from .models import User, Message, Task, AnalysisResult, Notification
 from .services.ml_service import ml_service
 from .services.llm_service import llm_service
+from .celery_app import celery_init_app
 from config import config_by_name
 
 logger = logging.getLogger(__name__)
@@ -41,8 +42,11 @@ def create_app():
     login_manager.init_app(app)  # login_manager connection to app
     csrf.init_app(app)           # csrf_token() calls
 
+    # ≈≈≈≈ Celery / Redis wiring ≈≈≈≈
+    celery_init_app(app)        # Configure Celery with this Flask app and app context.
+    from . import celery_tasks  # noqa: F401  import registers @shared_task  (e.g. ping)
 
-    # authentication config
+    # ≈≈≈≈ Authentication Config ≈≈≈≈
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please log in to access this page."
     login_manager.login_message_category = "info"

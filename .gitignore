@@ -1,5 +1,6 @@
 # Virtual environments
 venv/
+.venv/
 
 # Environment variables (secrets)
 .env
@@ -14,22 +15,43 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Pytest cache
+.pytest_cache/
+
 # IDE settings
 .idea/
+.vscode/
 
 # Mac system files
 .DS_Store
 
 # SQLite databases
+*.db
 *.sqlite
 *.sqlite3
 
 # Logs
 *.log
 
+# Celery runtime files
+celerybeat-schedule
+celerybeat-schedule.*
+
+# Redis local database snapshot
+dump.rdb
+
+# generated test reports files
+.coverage
+htmlcov/
+
+# Build/package folders
+build/
+dist/
+*.egg-info/
+
 # This folder stores generated datasets, not source code
 ml/models/*.pkl
-ml/data/*
+ml/data/dataset.csv
 
 # keep the folder for convenience
 !ml/models/.gitkeep

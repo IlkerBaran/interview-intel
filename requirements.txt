@@ -32,3 +32,5 @@ joblib
 anthropic==0.91.0
 email-validator
 resend
+celery[redis]>=5.5,<6.0
+pytest
