@@ -1,92 +1,94 @@
 """
-Email service using Resend API.
+Email service for transactional emails sent through Resend API.
 
-Handles all outgoing emails for Interview Intel including
-email verification, password reset, and notification emails.
-All sends are fire-and-forget via threading to keep
-request/response cycle fast for the user.
+Stage 2 moves email delivery out of daemon threads and into Celery tasks.
+Auth routes call the thin enqueue helpers in this module with only a user ID.
+The Celery tasks in app/celery_tasks.py re-fetch the user, generate tokens,
+render templates, and send the email.
 
-if daemon — dropped emails on shutdown these are recoverable
+This module is the only place that calls Resend through _send_via_resend()
+and the only place that reads RESEND_API_KEY. The API key, rendered email
+content, and secret tokens are never passed through Celery task arguments
+or stored in the broker.
+
+See ADR-0006 and ADR-0007.
 """
 
-import resend
+
 import logging
-from threading import Thread
+from uuid import uuid4
+
+import resend
 from flask import current_app
-from typing import Optional
+
 
 logger = logging.getLogger(__name__)
 
-def _send_email_background(api_key: str, params: dict) -> None:
-    """Send email in a background thread."""
-    try:
-        resend.api_key = api_key
-        resend.Emails.send(params)
-    except Exception as e:
-        logger.error(
-            "Failed to send email error_type=%s",
-            type(e).__name__,
-            extra={
-                "error_type": type(e).__name__
-            }
-        )
 
-def queue_email(
-        to: str,
-        subject: str,
-        html: str,
-        plain: Optional[str]=None
-) -> bool:
+def _send_via_resend(params: dict) -> None:
     """
-    Queue an email send in a background thread.
+    Send an email through Resend using Flask config.
 
-    Returns True if thread started successfully.
-    Returns False if setup failed.
+    Reads `RESEND_API_KEY` and `MAIL_DEFAULT_SENDER` at call time from the active
+    Flask app context, so secrets are not passed through the broker.
+
+    Do not pass a Resend `idempotency_key`: retries generate a fresh token, and
+    deduplication could block the email containing the valid token. See ADR-0007.
+
+    `params` contains `to`, `subject`, `html`, and `text`.
+    """
+    app = current_app._get_current_object()
+    api_key = app.config["RESEND_API_KEY"]
+    sender = app.config["MAIL_DEFAULT_SENDER"]
+    if not api_key or not sender:
+        raise ValueError("Email config is missing (RESEND_API_KEY / MAIL_DEFAULT_SENDER)")
+
+    resend.api_key = api_key
+    resend.Emails.send({**params, "from": sender})
+
+
+def queue_verification_email(user_id: int) -> bool:
+    """
+    Enqueue an email-verification send for the given user id.
+    Returns True if enqueued, False if enqueueing failed.
     """
     try:
-        # Basic validations
-        if not to or "@" not in to:
-            raise ValueError("Invalid email recipient")
+        # Function-local import avoids an email_service <-> celery_tasks import cycle.
+        from app.celery_tasks import send_verification_email
 
-        if not subject:
-            raise ValueError("Email subject is missing")
-
-        if not html:
-            raise ValueError("Email HTML content is missing")
-
-        app = current_app._get_current_object()
-
-        api_key = app.config["RESEND_API_KEY"]
-        sender  = app.config["MAIL_DEFAULT_SENDER"]
-
-        # Config validations(extra safety)
-        if not api_key or not sender:
-            raise ValueError("Email config is missing")
-
-        params = {
-            "from": sender,
-            "to": [to],
-            "subject": subject,
-            "html": html
-        }
-
-        if plain: params["text"] = plain
-
-        thread = Thread(
-            target=_send_email_background,
-            args=(api_key, params),
-            daemon=True
-        )
-        thread.start()
-
+        send_verification_email.delay(user_id, uuid4().hex)
         return True
-
     except Exception as e:
         logger.error(
-            "Failed to start background email send error_type=%s",
-            type(e).__name__,
+            "Failed to enqueue verification email user_id=%s error_type=%s",
+            user_id, type(e).__name__,
             extra={
+                "user_id": user_id,
                 "error_type": type(e).__name__
             }
         )
         return False
+
+
+def queue_password_reset_email(user_id: int) -> bool:
+    """
+    Enqueue a password-reset send for the given user id.
+    Returns True if enqueued, False if enqueueing failed.
+    """
+    try:
+        from app.celery_tasks import send_password_reset_email
+
+        send_password_reset_email.delay(user_id, uuid4().hex)
+        return True
+    except Exception as e:
+        logger.error(
+            "Failed to enqueue password reset email user_id=%s error_type=%s",
+            user_id, type(e).__name__,
+            extra={
+                "user_id": user_id,
+                "error_type": type(e).__name__
+            }
+        )
+        return False
+
+

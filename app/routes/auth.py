@@ -1,19 +1,14 @@
 from werkzeug.security import generate_password_hash, check_password_hash
 import logging
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session
+from flask import Blueprint, render_template, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, current_user, login_required
 
 from app.extensions import db
 from app.forms.auth_forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm
 from app.models import User
-from app.services.auth_service import(
-    verify_email_token,
-    generate_verification_token,
-    generate_password_reset_token,
-    verify_password_reset_token
-)
-from app.services.email_service import queue_email
+from app.services.auth_service import verify_email_token, verify_password_reset_token
+from app.services.email_service import queue_verification_email, queue_password_reset_email
 from app.utils import safe_redirect, mask_email
 
 
@@ -47,39 +42,9 @@ def register():
 
         if existing_user:
             if not existing_user.is_verified:
-                token = generate_verification_token(existing_user)
-
-                try:
-                    db.session.commit()
-                except Exception as e:
-                    db.session.rollback()
-                    logger.error(
-                        "Failed to regenerate token for unverified user_id=%s error_type=%s",
-                        existing_user.id,
-                        type(e).__name__,
-                        extra={
-                            "user_id": existing_user.id,
-                            "error_type": type(e).__name__
-                        }
-                    )
-                    flash("Something went wrong. Please try again.", "danger")
-                    return redirect(url_for("auth.register"))
-
-                confirmation_url = url_for(
-                    "auth.verify_email",
-                    token=token,
-                    _external=True
-                )
-
-                queue_email(
-                    to=existing_user.email,
-                    subject="Confirm your Interview Intel account",
-                    html=render_template(
-                        "email/confirmation.html",
-                        confirmation_url=confirmation_url
-                    ),
-                    plain=f"Confirm your email by visiting: {confirmation_url}"
-                )
+                # Token generated + email rendered inside the Celery task (pass id,
+                # build in the worker - ADR-0006). Nothing to commit here.
+                queue_verification_email(existing_user.id)
 
             # same response for all existing emails — prevent enumeration
             flash(
@@ -92,8 +57,6 @@ def register():
         user = User()
         user.email = form.email.data
         user.password = form.password.data
-
-        token = generate_verification_token(user)
 
         try:
             db.session.add(user)
@@ -110,21 +73,9 @@ def register():
             flash("Something went wrong. Please try again.", "danger")
             return redirect(url_for("auth.register"))
 
-        confirmation_url = url_for(
-            "auth.verify_email",
-            token=token,
-            _external=True
-        )
-
-        queue_email(
-            to=user.email,
-            subject="Confirm your Interview Intel account",
-            html=render_template(
-                "email/confirmation.html",
-                confirmation_url=confirmation_url
-            ),
-            plain=f"Confirm your email by visiting: {confirmation_url}"
-        )
+        # User is committed (id assigned) → enqueue by id; the worker generates the
+        # token and renders the email (ADR-0006).
+        queue_verification_email(user.id)
 
         flash(
             "If that email is available you will receive a confirmation link shortly.",
@@ -204,7 +155,7 @@ def login():
             login_user(user, form.remember_me.data)
             flash("You have been logged in successfully.", "success")
 
-            # safe_redirect() blocks external URLs and javascript: schemes — see utils.py
+            # safe_redirect() blocks external URLs and JavaScript: schemes — see utils.py
             return safe_redirect("dashboard.index")
 
         flash("Invalid email or password.", "danger")
@@ -299,39 +250,9 @@ def resend_verification():
         session.pop("pending_verification_email", None)
         return redirect(url_for("auth.login"))
 
-    token = generate_verification_token(user)
-
-    try:
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        logger.error(
-            "Failed to regenerate verification token for user_id=%s error_type=%s",
-            user.id,
-            type(e).__name__,
-            extra={
-                "user_id": user.id,
-                "error_type": type(e).__name__
-            }
-        )
-        flash("Something went wrong. Please try again.", "danger")
-        return redirect(url_for("auth.unverified"))
-
-    confirmation_url = url_for(
-        "auth.verify_email",
-        token=token,
-        _external=True
-    )
-
-    queue_email(
-        to=user.email,
-        subject="Confirm your Interview Intel account",
-        html=render_template(
-            "email/confirmation.html",
-            confirmation_url=confirmation_url
-        ),
-        plain=f"Confirm your email by visiting: {confirmation_url}"
-    )
+    # Token generated + email rendered inside the Celery task (pass id, build in the
+    # worker — ADR-0006).
+    queue_verification_email(user.id)
 
     flash("Confirmation email sent. Please check your inbox.", "info")
     return redirect(url_for("auth.unverified"))
@@ -360,39 +281,9 @@ def forgot_password():
         # Always flash the same message even if email is not found
         # Prevents user enumeration attacks
         if user:
-            token = generate_password_reset_token(user)
-
-            try:
-                db.session.commit()
-            except Exception as e:
-                db.session.rollback()
-                logger.error(
-                    "Failed to save password reset token for user_id=%s error_type=%s",
-                    user.id,
-                    type(e).__name__,
-                    extra={
-                        "user_id": user.id,
-                        "error_type": type(e).__name__
-                    }
-                )
-                flash("Something went wrong. Please try again.", "danger")
-                return redirect(url_for("auth.forgot_password"))
-
-            reset_url = url_for(
-                "auth.reset_password",
-                token=token,
-                _external=True
-            )
-
-            queue_email(
-                to=user.email,
-                subject="Reset your Interview Intel password",
-                html=render_template(
-                    "email/password_reset.html",
-                    reset_url=reset_url
-                ),
-                plain=f"Reset your password by visiting: {reset_url}"
-            )
+            # Token generated + email rendered inside the Celery task (pass id, build
+            # in the worker — ADR-0006).
+            queue_password_reset_email(user.id)
 
         flash(
             "If that email is registered you will receive a reset link shortly.",
@@ -409,7 +300,7 @@ def reset_password(token):
     Handle password reset form submission.
 
     GET  → show the new password form if token is valid
-    POST → validate new password, save, clear token, redirect to login
+    POST → validate new password, save, clear token, redirect to log in
     """
     if current_user.is_authenticated:
         return redirect(url_for("dashboard.index"))

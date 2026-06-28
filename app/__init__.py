@@ -1,7 +1,7 @@
 import os
 import logging
 
-from flask import Flask
+from flask import Flask, has_request_context
 from flask_login import current_user
 from sqlalchemy import func
 
@@ -88,9 +88,16 @@ def create_app():
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         return response
 
-    # Provides unread_count globally to templates for displaying the notification badge
+
     @app.context_processor
     def inject_unread_notification_count():
+        # Provides unread_count globally to templates for displaying the notification badge but
+        # Context processors run on EVERY render_template — including emails rendered
+        # inside a Celery worker, where there is no request context and current_user
+        # resolves to None (AttributeError on .is_authenticated). Guard first.
+        if not has_request_context():
+            return {"unread_count": 0}
+
         if not current_user.is_authenticated or not current_user.is_verified:
             return {"unread_count": 0}
 
@@ -101,27 +108,39 @@ def create_app():
         )
         return {"unread_count": count or 0}
 
+    # ≈≈≈≈ load ML + LLM once at startup — unless this process doesn't need them ≈≈≈≈
+    # Email-only Celery workers run with LOAD_MODELS=0 so they don't carry the model
+    # weights (memory that would otherwise multiply across prefork children × replicas).
+    # This is the precondition for Stage 3's fast-email / slow-ML queue split. (ADR-0008)
+    if app.config.get("LOAD_MODELS", True):
+        with app.app_context():
+            # ≈≈≈≈ ML service load ≈≈≈≈
+            try:
+                ml_service.load()
+            except FileNotFoundError:
+                logger.warning("ML models not found — run: python ml/train.py")
 
-    # ≈≈≈≈ load Ml models once at startup ≈≈≈≈
-    with app.app_context():
-        try:
-            ml_service.load()
-        except FileNotFoundError:
-            logger.warning("ML models not found — run: python ml/train.py")
+            # unknown ml load error
+            except Exception:
+                logger.exception("ML models failed to load")
 
-        # unknown ml load error
-        except Exception:
-            logger.exception("ML models failed to load")
+            # ≈≈≈≈ LLM service load ≈≈≈≈
+            try:
+                llm_service.load()
+            except ValueError as e:
+                logger.warning(
+                    "LLM service not initialized: %s",
+                    type(e).__name__,
+                    extra={
+                        "error_type": type(e).__name__
+                    }
+                )
 
-        # ≈≈≈≈ load LLM service once at startup ≈≈≈≈
-        try:
-            llm_service.load()
-        except ValueError as e:
-            logger.warning("LLM service not initialized: %s", e)
-
-        # unknown llm load error
-        except Exception:
-            logger.exception("LLM service failed to load")
+            # unknown llm load error
+            except Exception:
+                logger.exception("LLM service failed to load")
+    else:
+        logger.info("LOAD_MODELS is off — skipping ML/LLM load (email/worker role)")
 
 
     # register the blueprints

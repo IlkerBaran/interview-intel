@@ -29,7 +29,7 @@ HOW TO RUN (follow word for word, from the project root)
    (install once if needed: `brew install redis`; verify: `redis-cli ping` -> PONG)
 
 2) Start a worker that registers THIS module's probe task, in its own terminal:
-        .venv/bin/celery -A celery_worker.celery worker \
+        .venv/bin/python -m celery -A celery_worker.celery worker \
             --pool=solo --include=tests.integration.test_session_teardown --loglevel=info
    The probe task lives in this test file, so the worker must --include it.
    --pool=solo isolates the per-task lifecycle and avoids the macOS prefork
@@ -75,7 +75,7 @@ _PROBE_NAME = "tests.integration.session_teardown_probe"
 _SETUP_HINT = (
     "SKIPPED: this integration test needs a live Redis broker AND a running Celery "
     "worker ({reason}). See this module's docstring for the exact start-up steps:  "
-    "redis-server  +  .venv/bin/celery -A celery_worker.celery worker --pool=solo "
+    "redis-server  +  .venv/bin/python -m celery -A celery_worker.celery worker --pool=solo "
     "--include=tests.integration.test_session_teardown"
 )
 

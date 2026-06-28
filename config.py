@@ -78,9 +78,25 @@ class Config:
         # result_expires: left at Celery's default (Redis applies it as a per-key
         # TTL(Time To Live)).
         # Tune at the pre-production gate;
-        # set ignore_result=True per-task for
-        # fire-and-forget work to save Redis memory(email, Stage 2).
+        # Email tasks set ignore_result=True per-task (see celery_tasks.py) so
+        # fire-and-forget sends don't store results in Redis.
     }
+
+    # ≈≈≈≈ External URL building ≈≈≈≈
+    # Required so url_for(_external=True) works OUTSIDE a request — e.g. verification /
+    # reset links built inside the Celery worker (ADR-0006). SERVER_NAME is app-wide:
+    # it also makes the web app enforce Host-header matching (acceptable, single domain).
+    SERVER_NAME = os.getenv("SERVER_NAME")
+    PREFERRED_URL_SCHEME = os.getenv("PREFERRED_URL_SCHEME", "https")
+
+    # ≈≈≈≈ Worker role: model loading ≈≈≈≈
+    # Email-only workers set LOAD_MODELS=0 to skip the heavy ML/LLM weight load. (ADR-0008)
+    LOAD_MODELS = os.getenv("LOAD_MODELS", "true").strip().lower() in ("1", "true", "yes", "on")
+
+    # ≈≈≈≈ Email send suppression (tests) ≈≈≈≈
+    # When true, email tasks record a token-free summary instead of calling Resend, for
+    # the live-worker integration test. False in normal operation.
+    MAIL_SUPPRESS_SEND = os.getenv("MAIL_SUPPRESS_SEND", "false").strip().lower() in ("1", "true", "yes", "on")
 
 
 class DevelopmentConfig(Config):
@@ -90,6 +106,9 @@ class DevelopmentConfig(Config):
     SECRET_KEY = os.getenv("SECRET_KEY") or "dev-secret-key"  # SECRET_KEY fallback
     MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "onboarding@resend.dev") # MAIL_DEFAULT_SENDER fallback
 
+    # Access the dev server at this exact host (Flask enforces it once SERVER_NAME is set).
+    SERVER_NAME = os.getenv("SERVER_NAME", "localhost:5000")
+    PREFERRED_URL_SCHEME = os.getenv("PREFERRED_URL_SCHEME", "http")
 
 class TestingConfig(Config):
     DEBUG = False
@@ -99,6 +118,10 @@ class TestingConfig(Config):
     WTF_CSRF_ENABLED = False  # disable CSRF in tests so forms submit cleanly
     SECRET_KEY = "test-secret-key"  # hardcode so tests don't need .env
 
+    SERVER_NAME = "localhost"  # makes url_for(_external=True) deterministic in tests
+    PREFERRED_URL_SCHEME = "http"
+    LOAD_MODELS = False  # unit tests never need the ML/LLM stack
+    MAIL_SUPPRESS_SEND = True  # unit tests never hit Resend
 
 class ProductionConfig(Config):
     DEBUG = False
@@ -120,6 +143,12 @@ class ProductionConfig(Config):
     if not MAIL_DEFAULT_SENDER:
         raise ValueError("MAIL_DEFAULT_SENDER must be set in environment")
 
+    # Required so the worker can build correct external links (ADR-0006).
+    SERVER_NAME = os.getenv("SERVER_NAME")
+    if not SERVER_NAME:
+        raise ValueError("SERVER_NAME must be set in environment (used to build external email links)")
+
+    PREFERRED_URL_SCHEME = os.getenv("PREFERRED_URL_SCHEME", "https")
 
 config_by_name = {
     "development": DevelopmentConfig,
