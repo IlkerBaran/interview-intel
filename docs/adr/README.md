@@ -26,6 +26,9 @@ See [ADR-0001](0001-record-architecture-decisions.md) for why this practice exis
 | [0003](0003-use-json-serializer-not-pickle.md)                  | Use JSON Serializer, Not Pickle                 | Accepted |
 | [0004](0004-separate-redis-databases-for-broker-and-results.md) | Separate Redis Databases for Broker and Results | Accepted |
 | [0005](0005-verify-session-teardown-with-a-live-worker-test.md) | Verify Session Teardown With a Live-Worker Test | Accepted |
+| [0006](0006-build-token-bearing-emails-in-the-worker.md)        | Build Token-Bearing Emails in the Worker        | Accepted |
+| [0007](0007-at-least-once-email-delivery.md)                    | At-Least-Once Email Delivery, Latest-Token-Wins | Accepted |
+| [0008](0008-gate-eager-ml-loading-behind-load-models.md)        | Gate Eager ML/LLM Loading Behind LOAD_MODELS    | Accepted |
 
 ## Adding a new ADR
 
