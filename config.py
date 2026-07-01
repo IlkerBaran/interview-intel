@@ -106,8 +106,9 @@ class DevelopmentConfig(Config):
     SECRET_KEY = os.getenv("SECRET_KEY") or "dev-secret-key"  # SECRET_KEY fallback
     MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "onboarding@resend.dev") # MAIL_DEFAULT_SENDER fallback
 
-    # Access the dev server at this exact host (Flask enforces it once SERVER_NAME is set).
-    SERVER_NAME = os.getenv("SERVER_NAME", "localhost:5000")
+    # Access the dev server at this host. Port 5001 (not Flask's usual 5000) because macOS
+    # AirPlay Receiver squats on port 5000 and answers localhost:5000 with a 403.
+    SERVER_NAME = os.getenv("SERVER_NAME", "localhost:5001")
     PREFERRED_URL_SCHEME = os.getenv("PREFERRED_URL_SCHEME", "http")
 
 class TestingConfig(Config):
