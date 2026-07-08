@@ -1,6 +1,9 @@
 """
 Fixtures for the fast unit suite.
 
+* To run unittests type in terminal:
+    .venv/bin/pytest -m "not integration"
+
 Uses testing config with:
 - an in-memory database
 - ML/LLM model loading disabled
@@ -61,3 +64,20 @@ def unverified_user(app):
     _db.session.commit()
 
     return user
+
+
+@pytest.fixture
+def client_logged_in(app):
+    """A test client with a verified, logged-in user (for route tests)."""
+    user = User()
+    user.email = "route_user@example.com"
+    user.password = "T3st-secret*"
+    user.is_verified = True
+
+    _db.session.add(user)
+    _db.session.commit()
+
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(user.id)   # flask-login session key
+    return client

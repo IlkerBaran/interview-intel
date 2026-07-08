@@ -363,9 +363,9 @@
     </div>
 
     <!-- ── PROCESSING BANNER ── -->
-    {% if message.status == "processing" %}
-        <div class="processing-banner">
-            ⏳ This email is still being analyzed. Refresh in a moment.
+    {% if message.status in ["pending", "processing"] %}
+        <div class="processing-banner" id="analysis-status">
+            ⏳ Analyzing this email… this page will refresh automatically when it's ready.
         </div>
     {% elif message.status == "failed" %}
         <div class="processing-banner" style="background:#fef2f2; border-color:#fecaca; color:#991b1b;">
@@ -607,4 +607,43 @@
         </div>
     </div>
 
+{% endblock %}
+
+
+{% block extra_scripts %}
+{% if message.status in ["pending", "processing"] %}
+<script>
+(function () {
+    // Exact value strings — must match MessageStatus.value + the status endpoint.
+    const STATUS_URL   = "{{ url_for('messages.message_status', message_id=message.id) }}";
+    const POLL_MS      = 3000;
+    const MAX_ATTEMPTS = 100;            // ~5 minutes, then stop
+    let   attempts     = 0;
+
+    async function poll() {
+        attempts += 1;
+        try {
+            const res = await fetch(STATUS_URL, { headers: { "Accept": "application/json" } });
+            if (res.ok) {
+                const data = await res.json();
+                // On COMPLETED or FAILED, a single full reload renders the finished
+                // page (or the FAILED banner) via the normal server template.
+                if (data.status === "completed" || data.status === "failed") {
+                    window.location.reload();
+                    return;
+                }
+            }
+        } catch (e) { /* transient network error — keep polling */ }
+
+        if (attempts < MAX_ATTEMPTS) {
+            setTimeout(poll, POLL_MS);
+        } else {
+            const el = document.getElementById("analysis-status");
+            if (el) el.textContent = "Still analyzing… refresh the page to check again.";
+        }
+    }
+    setTimeout(poll, POLL_MS);
+})();
+</script>
+{% endif %}
 {% endblock %}

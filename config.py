@@ -50,6 +50,28 @@ class Config:
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
     LLM_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
 
+    # ≈≈≈≈ LLM API timeout and retry settings (Stage 3) ≈≈≈≈
+    # Prevent Anthropic/LLM calls from hanging forever.
+    # These limits make sure a stuck request fails so Celery can handle retry/failure logic.
+    #
+    # LLM_MAX_RETRIES=0 means the Anthropic client will not retry internally.
+    # Celery owns task retries, which keeps timing predictable.
+    LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+    LLM_CONNECT_TIMEOUT_SECONDS = float(os.getenv("LLM_CONNECT_TIMEOUT_SECONDS", "10"))
+    LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "0"))
+
+    # ≈≈≈≈ Fake LLM mode for tests ≈≈≈≈
+    # When enabled, llm_service returns deterministic test text instead of calling Anthropic.
+    # This is used for live-worker integration tests, similar to MAIL_SUPPRESS_SEND for email.
+    # Keep this false in normal production operation.
+    LLM_FAKE = os.getenv("LLM_FAKE", "false").strip().lower() in ("1", "true", "yes", "on")
+
+    # LLM_FAKE_MODE selects the fake's behavior when LLM_FAKE=1:
+    #   "degrade" (default): non-JSON echo → extraction degrades to None, enrichments non-None
+    #   "success": valid JSON for the extraction call (parses → structured fields populate)
+    #              + canned prose for the 5 enrichment calls
+    LLM_FAKE_MODE = os.getenv("LLM_FAKE_MODE", "degrade").strip().lower()
+
     # ≈≈≈≈ Resend config ≈≈≈≈
     RESEND_API_KEY = os.getenv("RESEND_API_KEY")
     MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER")
@@ -59,31 +81,52 @@ class Config:
     PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 1
 
     # ≈≈≈≈ Celery / Redis config ≈≈≈≈
-    # Two separate env vars even though both target the same local Redis today,
-    # so broker/results can later split onto different DBs or instances by env
-    # only - no code changes. (Numbered-DB split is not real security separation,
-    # It helps organize data; real security separation = separate instances.)
     CELERY = {
+        # Stage 1: Two separate env vars even though both target the same local Redis today,
+        # so broker/results can later split onto different DBs or instances by env
+        # only - no code changes.
+        #
+        # Redis numbered-DB split is not real security separation,
+        # It helps organize data; real security separation = separate instances.
         "broker_url": os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
         "result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1"),
+
         # json: blocks pickle RCE(Remote Code Execution) and rules out ORM-object args.
         # JSON makes the format safer, but it does not stop you from sending huge data
         # so small/ID-sized messages stay a convention.
         "task_serializer": "json",
         "result_serializer": "json",
         "accept_content": ["json"],
+
         # Explicitly keep Celery's startup retry behavior.
         # In Celery 5.x this avoids the warning about the behavior changing in Celery 6.0.
         "broker_connection_retry_on_startup": True,
-        # result_expires: left at Celery's default (Redis applies it as a per-key
-        # TTL(Time To Live)).
-        # Tune at the pre-production gate;
-        # Email tasks set ignore_result=True per-task (see celery_tasks.py) so
-        # fire-and-forget sends don't store results in Redis.
+
+        # result_expires is left at Celery's default.
+        # With Redis, Celery applies this as a per-key TTL (Time To Live).
+        #
+        # Tune this at the pre-production gate.
+        # Email tasks use ignore_result=True per task, so fire-and-forget sends
+        # do not store results in Redis.
+
+        # Stage 3: Route heavy analysis tasks to the ML worker queue.
+        # These workers run with LOAD_MODELS=1 and are separate from email/default workers.
+        "task_routes": {
+            "app.celery_tasks.analyze_message": {"queue": "ml"},
+        },
+        # Periodic cleanup for stuck analyses.
+        # Celery Beat sends this task every 120(2min).
+        # The task only uses the DB, so it can run on the default LOAD_MODELS=0 worker.
+        "beat_schedule": {
+            "sweep-stuck-analyses": {
+                "task": "app.celery_tasks.sweep_stuck_analyses",
+                "schedule": float(os.getenv("ANALYSIS_SWEEP_INTERVAL_SECONDS", "120"))
+            }
+        }
     }
 
     # ≈≈≈≈ External URL building ≈≈≈≈
-    # Required so url_for(_external=True) works OUTSIDE a request — e.g. verification /
+    # Stage 2: Required so url_for(_external=True) works OUTSIDE a request — e.g. verification /
     # reset links built inside the Celery worker (ADR-0006). SERVER_NAME is app-wide:
     # it also makes the web app enforce Host-header matching (acceptable, single domain).
     SERVER_NAME = os.getenv("SERVER_NAME")

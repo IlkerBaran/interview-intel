@@ -1,5 +1,4 @@
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, UTC
 from typing import Optional
 from dataclasses import dataclass, field
@@ -21,8 +20,9 @@ from app.models import (
     NotificationType,
     Notification
 )
+import anthropic
 from app.services.ml_service import ml_service
-from app.services.llm_service import llm_service
+from app.services.llm_service import llm_service, TRANSIENT_LLM_ERRORS
 from app.services.preprocess_language import normalize_text
 
 
@@ -161,264 +161,242 @@ NOTIFICATION_MAP = {
 }
 
 
-def process_message_submission(
+def save_message_for_analysis(
         user_id: int,
         raw_text: str,
         subject: Optional[str] = None,
         sender_email: Optional[str] = None,
-) -> tuple[Message, AutoLinkResult]:
+) -> Message:
     """
-    Full pipeline: normalize language → ML → LLM → save → tasks.
-
-    Saves Message and AnalysisResult to DB.
-    Generates tasks based on backend rules.
-    Returns the saved Message object.
-
-    Raises on hard failure — route handles flash/redirect.
+    Route side (Stage 3): save the raw message as PENDING and return immediately.
+    The heavy ML/LLM pipeline runs later in the Celery task. Raises on empty input
+    or DB failure so the route can flash/redirect.
     """
-
-    # ≈≈≈≈ edge case: empty input ≈≈≈≈
     if not raw_text or not raw_text.strip():
         raise ValueError("raw_text cannot be empty")
+    return _save_message(user_id, raw_text, subject, sender_email)
 
-    # ≈≈≈≈ save message first ≈≈≈≈
-    # Save the raw message before ML/LLM
-    # so user data is never lost on downstream failure
-    message = _save_message(user_id, raw_text, subject, sender_email)
 
-    # ≈≈≈≈ try block: everything's after message save to protect the pipeline ≈≈≈≈
+def queue_message_analysis(message_id: int) -> bool:
+    """
+    Enqueue the analysis task by id (pass IDs, not objects). Returns True if
+    enqueued, False on failure (e.g. broker unreachable) so the route can mark the
+    message FAILED instead of leaving it PENDING forever. Function-local import
+    avoids a workflow_service <-> celery_tasks import cycle.
+    """
     try:
-        # language normalization
-        normalized_text, detected_lang, translation_success = normalize_text(raw_text)
+        from app.celery_tasks import analyze_message
+        analyze_message.delay(message_id)
+        return True
+    except Exception as e:
+        logger.error(
+            "Failed to enqueue analysis message_id=%s error_type=%s",
+            message_id, type(e).__name__,
+            extra={"message_id": message_id, "error_type": type(e).__name__},
+        )
+        return False
 
-        if detected_lang != "en" and not translation_success:
-            # structured logger, queryable in Datadog/ELK
+
+def analysis_already_done(message: Message) -> bool:
+    """
+    Skip-if-done guard (Stage 3 idempotency): True if the work already completed, so
+    a redundant acks_late redelivery does not re-run and re-charge the LLM.
+    """
+    if message.status == MessageStatus.COMPLETED:
+        return True
+    exists = db.session.execute(
+        db.select(AnalysisResult.id).where(AnalysisResult.message_id == message.id)
+    ).scalar_one_or_none()
+    return exists is not None
+
+
+def mark_analysis_failed(message_id: int) -> bool:
+    """
+    Force a message to the terminal FAILED state and commit. Used whenever a message
+    must not be left in a non-terminal state: the route (enqueue failed) and the
+    worker (permanent error, transient-retry exhaustion, soft time limit).
+
+    Robustness:
+      1. Rollback FIRST — a soft-limit or error may fire mid-transaction; clearing
+         the half-open txn stops it poisoning this write.
+      2. Re-fetch by id — the previously loaded object may be expired after rollback.
+      3. Does NOT overwrite a message that already reached COMPLETED.
+      4. Never raises; completes the commit before control returns, so it finishes
+         before the FlaskTask app-context teardown runs session.remove().
+    """
+    try:
+        db.session.rollback()
+        message = db.session.get(Message, message_id)
+        if message is None:
             logger.warning(
-                "Translation failed. Skipping ML/LLM pipeline.",
-                extra={
-                    "message_id": message.id,
-                    "detected_lang": detected_lang,
-                }
+                "mark_analysis_failed: message_id=%s not found", message_id,
+                extra={"message_id": message_id},
             )
+            return False
+        if message.status == MessageStatus.COMPLETED:
+            return True   # already terminal-success — do not clobber
+        message.status = MessageStatus.FAILED
+        db.session.commit()
+        return True
+    except Exception as e:
+        db.session.rollback()
+        logger.error(
+            "mark_analysis_failed: could not mark message %s FAILED — %s",
+            message_id, type(e).__name__,
+            extra={"message_id": message_id, "error_type": type(e).__name__},
+        )
+        return False
 
-            # save minimal result with language info - no ML/LLM data
-            _save_pipeline_results(
-                message=message,
-                ml_result={},
-                details={},
-                detected_lang=detected_lang,
-                llm_outputs={},
-                tools_used=[],
-            )
 
-            # ≈≈≈≈ auto-link to job application ≈≈≈≈
-            link_result = _auto_link_applications(
-                message=message,
-                company_name=None,
-                role_title=None,
-                sender_email=sender_email,
-                user_id=user_id,
-                category=None
-            )
+def run_message_analysis(message: Message) -> None:
+    """
+    Worker side (Stage 3): the full pipeline, run SEQUENTIALLY in the task's single
+    app context / single session (no ThreadPoolExecutor).
 
-            _maybe_notify(link_result, user_id)
+    Contract with the task:
+      * A TRANSIENT failure of the CRITICAL extraction call bubbles out unchanged so
+        the task's retry retries the whole pipeline.
+      * A PERMANENT extraction failure degrades (details stays {}) — no retry.
+      * The 5 enrichments are best-effort: each degrades to None, never retries.
+      * All result rows commit in ONE transaction (atomic writes).
+    """
+    user_id = message.user_id
+    sender_email = message.sender_email
+    raw_text = message.raw_text
 
-            return message, link_result
+    # ── language normalization ──
+    normalized_text, detected_lang, translation_success = normalize_text(raw_text)
 
-        if detected_lang != "en" and translation_success:
-            # translation path is degraded — warn so it's queryable for triage
-            logger.warning(
-                "Message %s translated to English from %s",
-                message.id,
-                detected_lang,
-                extra={
-                    "message_id": message.id,
-                    "detected_lang": detected_lang,
-                }
-            )
+    if detected_lang != "en" and not translation_success:
+        # COMPLETED-degraded: raw email + detected language are still shown.
+        logger.warning(
+            "Translation failed. Skipping ML/LLM pipeline.",
+            extra={"message_id": message.id, "detected_lang": detected_lang},
+        )
+        link_result = _auto_link_applications(
+            message=message, company_name=None, role_title=None,
+            sender_email=sender_email, user_id=user_id, category=None,
+        )
+        _save_pipeline_results(
+            message=message, ml_result={}, details={}, detected_lang=detected_lang,
+            llm_outputs={}, tools_used=[], link_result=link_result, user_id=user_id,
+        )
+        return
 
-        # ≈≈≈≈ Ml predictions ≈≈≈≈
-        ml_result = {}
-        ml_ran = False
+    if detected_lang != "en" and translation_success:
+        logger.warning(
+            "Message %s translated to English from %s", message.id, detected_lang,
+            extra={"message_id": message.id, "detected_lang": detected_lang},
+        )
 
-        if ml_service.is_loaded:
-            ml_result = ml_service.predict(normalized_text) or {}
-            ml_ran = True
+    # ── ML predictions ──
+    ml_result = {}
+    ml_ran = False
+    if ml_service.is_loaded:
+        ml_result = ml_service.predict(normalized_text) or {}
+        ml_ran = True
+    else:
+        logger.warning(
+            "ML service not loaded — skipping predictions for message %s", message.id,
+            extra={"message_id": message.id, "service": "ml_service"},
+        )
+
+    category = ml_result.get("category")
+    if not ml_ran:
+        ml_result["urgency_source"] = "unavailable"
+        ml_result["job_field_source"] = "unavailable"
+    else:
+        if category in HIGH_URGENCY_CATEGORIES:
+            ml_result["urgency"] = "high"
+            ml_result["urgency_source"] = "rule_based"
         else:
-            logger.warning(
-                "ML service not loaded — skipping predictions for message %s",
-                message.id,
-                extra={"message_id": message.id, "service": "ml_service"}
-            )
+            ml_result["urgency_source"] = "ml_predicted"
 
-        # ≈≈≈≈ Backend urgency rule ≈≈≈≈
-        category = ml_result.get("category")
-
-        if not ml_ran:
-            # ML did not run — sources are unavailable not predicted
-            ml_result["urgency_source"] = "unavailable"
-            ml_result["job_field_source"] = "unavailable"
-        else:
-            if category in HIGH_URGENCY_CATEGORIES:
-                ml_result["urgency"] = "high"
-                ml_result["urgency_source"] = "rule_based"
-                logger.debug(
-                    "Urgency overridden to high for message %s",
-                    message.id,
-                    extra={
-                        "message_id": message.id,
-                        "rule_applied": "high_urgency_override"
-                    }
-                )
-            else:
-                ml_result["urgency_source"] = "ml_predicted"
-
-            # ≈≈≈≈ context enrichment ≈≈≈≈
-            # If job_field is general and sender is known,
-            # inherit job_field from similar previous messages
-            if ml_result.get("job_field") == "general" and sender_email:
-                inherited = _inherit_job_field(user_id, sender_email, category)
-                if inherited:
-                    ml_result["job_field"] = inherited
-                    ml_result["job_field_source"] = "inherited"
-                    logger.info(
-                        "Job field inherited from prior message for message %s",
-                        message.id,
-                        extra={
-                            "message_id": message.id,
-                            "job_field_source": "inherited"
-                        }
-                    )
-                else:
-                    ml_result["job_field_source"] = "ml_predicted"
+        if ml_result.get("job_field") == "general" and sender_email:
+            inherited = _inherit_job_field(user_id, sender_email, category)
+            if inherited:
+                ml_result["job_field"] = inherited
+                ml_result["job_field_source"] = "inherited"
             else:
                 ml_result["job_field_source"] = "ml_predicted"
-
-        # ≈≈≈≈ LLM extraction(sequential) ≈≈≈≈
-        # Runs first alone — other LLM calls depend on its output
-        details = {}
-        llm_ran = False
-
-        if llm_service.is_loaded:
-            try:
-                details = llm_service.extract_interview_details(normalized_text)
-                llm_ran = True
-            except Exception as e:
-                logger.error(
-                    "LLM extraction failed for message %s — %s",
-                    message.id,
-                    type(e).__name__,
-                    extra={
-                        "message_id": message.id,
-                        "error_type": type(e).__name__
-                    }
-                )
         else:
-            logger.warning(
-                "LLM service not loaded — skipping extraction for message %s",
-                message.id,
-                extra={"message_id": message.id, "service": "llm_service"}
-            )
+            ml_result["job_field_source"] = "ml_predicted"
 
-        # use final_category after all enrichment — never use stale category
-        final_category = ml_result.get("category")
-
-        # ≈≈≈≈ auto-link to job application ≈≈≈≈
-        # Auto-link must happen before parallel LLM enrichment so linked
-        # application data can be used as stronger LLM context.
-        link_result = _auto_link_applications(
-            message=message,
-            company_name=details.get("company_name"),
-            role_title=details.get("role_title"),
-            sender_email=sender_email,
-            user_id=user_id,
-            category=final_category
-        )
-
-        # ≈≈≈≈ LLM context upgrade ≈≈≈≈
-        # Prefer user-saved JobApplication data when auto-link succeeds.
-        # Fall back to extracted/predicted pipeline values when there is no match.
-        matched_application = link_result.application
-
-        llm_company_name = (matched_application and matched_application.company) or details.get("company_name")
-        llm_role_title = (matched_application and matched_application.role) or details.get("role_title")
-        llm_job_field = (matched_application and matched_application.job_field) or ml_result.get("job_field")
-        llm_interview_stage = details.get("interview_stage")
-        llm_interview_format = details.get("interview_format")
-
-        # ≈≈≈≈ LLM enrichment (parallel) ≈≈≈≈
-        # 5 independent calls run concurrently
-        # Anthropic SDK client is thread-safe for concurrent requests
-        llm_outputs = {}
-        if llm_ran:
-            llm_outputs = _run_llm_parallel(
-                normalized_text=normalized_text,
-                category=final_category,
-                role_title=llm_role_title,
-                company_name=llm_company_name,
-                interview_stage=llm_interview_stage,
-                interview_format=llm_interview_format,
-                job_field=llm_job_field
-            )
-
-        # track what actually ran for honest agent logging
-        tools_used = []
-        if ml_ran:
-            tools_used.append("ml_service")
-        if llm_ran:
-            tools_used.append("llm_service")
-        if final_category in TASK_RULES:
-            tools_used.append("task_generator")
-
-        # ≈≈≈≈ single transaction ≈≈≈≈
-        # analysis + tasks + agent log + status update
-        _save_pipeline_results(
-            message=message,
-            ml_result=ml_result,
-            details=details,
-            detected_lang=detected_lang,
-            llm_outputs=llm_outputs,
-            tools_used=tools_used
-        )
-
-        logger.info(
-            "Pipeline completed for message %s",
-            message.id,
-            extra={"message_id": message.id}
-        )
-
-        # in-app notification
-        _maybe_notify(link_result, user_id)
-
-        return message, link_result
-
-    except Exception as e:
-        # if it fails mark message as failed
-        logger.error(
-            "Pipeline failed for message %s — %s",
-            message.id,
-            type(e).__name__,
-            extra={
-                "message_id": message.id,
-                "error_type": type(e).__name__
-            }
-        )
-
+    # ── CRITICAL extraction: transient bubbles → task retry; permanent degrades ──
+    details = {}
+    llm_ran = False
+    if llm_service.is_loaded:
         try:
-            message.status = MessageStatus.FAILED
-            db.session.commit()
-        except Exception as inner_e:
-            db.session.rollback()
-            logger.error(
-                "Could not update message %s status to FAILED — %s",
-                message.id,
-                type(inner_e).__name__,
-                extra={
-                    "message_id": message.id,
-                    "error_type": type(inner_e).__name__
-                }
+            details = llm_service.extract_interview_details(
+                normalized_text,
+                idempotency_key=f"msg-{message.id}-extract",
             )
-        raise
+            llm_ran = True
+        except TRANSIENT_LLM_ERRORS:
+            # Ordered BEFORE the generic handler: let the task retry the pipeline.
+            raise
+        except anthropic.APIError as e:
+            # Permanent (400/401/403/404/422 …) — degrade, do NOT retry.
+            logger.error(
+                "LLM extraction permanently failed for message %s — %s",
+                message.id, type(e).__name__,
+                extra={"message_id": message.id, "error_type": type(e).__name__},
+            )
+            details, llm_ran = {}, False
+    else:
+        logger.warning(
+            "LLM service not loaded — skipping extraction for message %s", message.id,
+            extra={"message_id": message.id, "service": "llm_service"},
+        )
+
+    # ── partial-failure gate: nothing to show → FAILED (atomic) ──
+    if not ml_ran and not llm_ran:
+        _mark_failed_nothing_to_show(message, detected_lang)
+        return
+
+    final_category = ml_result.get("category")
+
+    link_result = _auto_link_applications(
+        message=message, company_name=details.get("company_name"),
+        role_title=details.get("role_title"), sender_email=sender_email,
+        user_id=user_id, category=final_category,
+    )
+
+    matched_application = link_result.application
+    llm_company_name = (matched_application and matched_application.company) or details.get("company_name")
+    llm_role_title = (matched_application and matched_application.role) or details.get("role_title")
+    llm_job_field = (matched_application and matched_application.job_field) or ml_result.get("job_field")
+    llm_interview_stage = details.get("interview_stage")
+    llm_interview_format = details.get("interview_format")
+
+    # ── LLM enrichment: SEQUENTIAL, best-effort ──
+    llm_outputs = {}
+    if llm_ran:
+        llm_outputs = _run_llm_enrichments(
+            normalized_text=normalized_text, category=final_category,
+            role_title=llm_role_title, company_name=llm_company_name,
+            interview_stage=llm_interview_stage, interview_format=llm_interview_format,
+            job_field=llm_job_field,
+        )
+
+    tools_used = []
+    if ml_ran:
+        tools_used.append("ml_service")
+    if llm_ran:
+        tools_used.append("llm_service")
+    if final_category in TASK_RULES:
+        tools_used.append("task_generator")
+
+    # ── single transaction: AnalysisResult + Tasks + AgentRun + Notification + status ──
+    _save_pipeline_results(
+        message=message, ml_result=ml_result, details=details,
+        detected_lang=detected_lang, llm_outputs=llm_outputs,
+        tools_used=tools_used, link_result=link_result, user_id=user_id,
+    )
+    logger.info(
+        "Pipeline completed for message %s", message.id,
+        extra={"message_id": message.id},
+    )
 
 
 # ≈≈≈≈ Private Helpers ≈≈≈≈
@@ -436,7 +414,7 @@ def _save_message(
             raw_text=raw_text,
             subject=subject,
             sender_email=sender_email,
-            status=MessageStatus.PROCESSING,
+            status=MessageStatus.PENDING,
         )
         db.session.add(message)
         db.session.commit()
@@ -467,14 +445,18 @@ def _save_pipeline_results(
         detected_lang: str,
         llm_outputs: dict,
         tools_used: list,
+        link_result: AutoLinkResult,
+        user_id: int,
 ) -> None:
     """
-    Single transaction: save AnalysisResult + Tasks + AgentRun + status.
+    Single transaction: save AnalysisResult + Tasks + AgentRun + Notification + status.
 
     detected_lang is included in AgentRun.decision_reason for auditing.
     tools_used reflects what actually ran — not what was available.
+    The notification is staged into THIS transaction (atomic writes) — a crash
+    leaves nothing partially written.
 
-    Raises on failure — top-level handler sets message to FAILED.
+    Raises on failure — the task marks the message FAILED.
     """
     try:
         final_category = ml_result.get("category")
@@ -551,6 +533,9 @@ def _save_pipeline_results(
         )
         db.session.add(agent_run)
 
+        # ≈≈≈≈ notification (SAME transaction — atomic writes) ≈≈≈≈
+        _stage_notification(link_result, user_id)
+
         # ≈≈≈≈ message status ≈≈≈≈
         message.status = MessageStatus.COMPLETED
 
@@ -571,7 +556,7 @@ def _save_pipeline_results(
         raise
 
 
-def _run_llm_parallel(
+def _run_llm_enrichments(
         normalized_text: str,
         category: Optional[str],
         role_title: Optional[str],
@@ -581,12 +566,10 @@ def _run_llm_parallel(
         job_field: Optional[str],
 ) -> dict:
     """
-    Run all independent LLM enrichment calls in parallel.
-    Returns dict of outputs — None values on individual failure.
-
-    Thread safety: Anthropic Python SDK creates a new HTTP request
-    per API call and does not share mutable state between calls.
-    Safe to call from multiple threads simultaneously.
+    Run the 5 enrichment calls SEQUENTIALLY in the task's single app context (no
+    threads). Best-effort: a genuine failure of any single enrichment degrades that
+    field to None and is logged; it never propagates (only the critical extraction
+    retries the pipeline).
     """
     if not llm_service.is_loaded:
         return {}
@@ -599,7 +582,7 @@ def _run_llm_parallel(
         "archive_summary": None,
     }
 
-    tasks = {
+    calls = {
         "preparation_guidance": lambda: llm_service.generate_preparation_guidance(
             role_title=role_title,
             company_name=company_name,
@@ -632,25 +615,20 @@ def _run_llm_parallel(
         ),
     }
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {
-            executor.submit(fn): key
-            for key, fn in tasks.items()
-        }
-        for future in as_completed(futures):
-            key = futures[future]
-            try:
-                outputs[key] = future.result()
-            except Exception as e:
-                logger.error(
-                    "LLM parallel task failed: %s — %s",
-                    key,
-                    type(e).__name__,
-                    extra={
-                        "task_key": key,
-                        "error_type": type(e).__name__
-                    }
-                )
+    for key, fn in calls.items():
+        try:
+            outputs[key] = fn()
+        except Exception as e:
+            logger.error(
+                "LLM enrichment failed: %s — %s",
+                key,
+                type(e).__name__,
+                extra={
+                    "task_key": key,
+                    "error_type": type(e).__name__
+                }
+            )
+            outputs[key] = None
 
     return outputs
 
@@ -982,29 +960,24 @@ def _auto_update_status(
 
     return False, "same_rank"
 
-def _create_notification(
-        user_id: int,
-        application: JobApplication
-) -> None:
+def _stage_notification(link_result: AutoLinkResult, user_id: int) -> None:
     """
-    Create an in-app notification based on the current application status.
+    Stage an in-app notification onto the session (NO commit) so it is written in the
+    SAME transaction as AnalysisResult/Tasks/AgentRun (atomic writes). Only fires for
+    a successful, status-changing auto-link. Uses app.company/app.role — user-entered
+    values, never LLM text. Falls back to a generic message if either is missing.
+    Truncates to Notification.message = String(300).
+    """
+    if not (link_result.linked and link_result.status_updated and link_result.application):
+        return
 
-    Only fires for INTERVIEWING and OFFERED — other statuses are ignored.
-    Uses app.company and app.role — user-entered values, never LLM text.
-    Falls back to a generic message if company or role is missing.
-    Truncates to 300 characters safely.
-    Does commit — notification lives in its own transaction.
-    Failure is isolated — logs error and never raises so a broken
-    notification never breaks the pipeline.
-    """
+    application = link_result.application
     mapping = NOTIFICATION_MAP.get(application.status)
-
     if not mapping:
         return
 
     notification_type, template, fallback = mapping
 
-    # use template if both fields available, fallback if either is missing
     if application.company and application.role:
         message_text = template.format(
             company=application.company,
@@ -1013,39 +986,40 @@ def _create_notification(
     else:
         message_text = fallback
 
-    # safety truncate — Notification.message is String(300)
     if len(message_text) > 300:
         message_text = message_text[:297] + "..."
 
+    db.session.add(Notification(
+        user_id=user_id,
+        message=message_text,
+        notification_type=notification_type,
+        is_read=False
+    ))
+
+
+def _mark_failed_nothing_to_show(message: Message, detected_lang: str) -> None:
+    """
+    Neither ML nor LLM produced output → nothing to show → FAILED (atomic).
+
+    Writes an AgentRun audit row (status FAILED) and sets the message FAILED in one
+    commit. Raises on DB failure — the task's outer handler marks the message FAILED.
+    """
     try:
-        notification = Notification(
-            user_id=user_id,
-            message=message_text,
-            notification_type=notification_type,
-            is_read=False
-        )
-        db.session.add(notification)
+        db.session.add(AgentRun(
+            message_id=message.id,
+            agent_name="workflow_agent",
+            selected_tools=[],
+            decision_reason=f"No ML/LLM output | Detected language: {detected_lang}",
+            status=AgentRunStatus.FAILED,
+        ))
+        message.status = MessageStatus.FAILED
         db.session.commit()
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        logger.error(
-            "Failed to create notification for user %s error_type %s",
-            user_id,
-            type(e).__name__,
-            extra= {
-                "user_id": user_id,
-                "error_type": type(e).__name__
-            }
-        )
+        raise
 
-
-def _maybe_notify(link_result: AutoLinkResult, user_id: int) -> None:
-    if (
-        link_result.linked
-        and link_result.status_updated
-        and link_result.application
-    ):
-        _create_notification(
-            user_id=user_id,
-            application=link_result.application,
-        )
+    logger.warning(
+        "Pipeline produced nothing to show for message %s — marked FAILED",
+        message.id,
+        extra={"message_id": message.id},
+    )

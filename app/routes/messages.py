@@ -6,7 +6,11 @@ from flask_login import login_required, current_user
 from app.forms.message_forms import MessageSubmissionForm, MessageNoteForm
 from app.extensions import db
 from app.models import Message, MessageStatus
-from app.services.workflow_service import process_message_submission
+from app.services.workflow_service import (
+    save_message_for_analysis,
+    queue_message_analysis,
+    mark_analysis_failed,
+)
 from app.utils import verified_required
 
 logger = logging.getLogger(__name__)
@@ -62,26 +66,35 @@ def new_message():
     form = MessageSubmissionForm()
 
     if form.validate_on_submit():
+        # Stage 3: save the message as PENDING and return immediately; the heavy
+        # ML/LLM pipeline runs in the Celery task. The show_message page then polls
+        # for status and reloads when the analysis finishes.
         try:
-            message, link_result = process_message_submission(
+            message = save_message_for_analysis(
                 user_id=current_user.id,
                 raw_text=form.raw_text.data,
                 subject=form.subject.data or None,
                 sender_email=form.sender_email.data or None
             )
-
-            flash("Message analyzed successfully", "success")
-            return redirect(url_for("messages.show_message", message_id=message.id))
-
         except Exception as e:
             logger.error(
-                "Error while processing message submission error_type=%s",
+                "Error saving message submission error_type=%s",
                 type(e).__name__,
-                extra={
-                    "error_type": type(e).__name__
-                }
+                extra={"error_type": type(e).__name__}
             )
-            flash("Something went wrong while processing the message", "danger")
+            flash("Something went wrong while saving the message", "danger")
+            return render_template("messages/new_message.html", form=form)
+
+        # If the broker is unreachable, don't leave the message PENDING forever with
+        # no task queued — drive it to terminal FAILED so the user sees a clear
+        # failure instead of an eternal "Analyzing…" spinner.
+        if not queue_message_analysis(message.id):
+            mark_analysis_failed(message.id)
+            flash("We couldn't start the analysis right now. Please try again in a moment.", "danger")
+            return redirect(url_for("messages.show_message", message_id=message.id))
+
+        flash("Analysis started — results will appear shortly.", "success")
+        return redirect(url_for("messages.show_message", message_id=message.id))
 
     return render_template("messages/new_message.html", form=form)
 
@@ -97,6 +110,21 @@ def show_message(message_id):
     message = get_user_message_or_404(message_id)
 
     return render_template("messages/show_message.html", message=message)
+
+
+@messages_bp.route("/<int:message_id>/status", methods=["GET"])
+@login_required
+@verified_required
+def message_status(message_id):
+    """
+    Cheap JSON status for the async poller: one ownership-scoped DB lookup, no
+    template render. Returns the exact MessageStatus VALUE string ("pending" /
+    "processing" / "completed" / "failed") — never str(enum), which would be
+    'MessageStatus.COMPLETED' and break the JS compare.
+    """
+    message = get_user_message_or_404(message_id)
+    status = message.status.value if isinstance(message.status, MessageStatus) else message.status
+    return {"status": status}
 
 
 @messages_bp.route("/<int:message_id>/delete", methods=["POST"])

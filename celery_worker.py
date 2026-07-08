@@ -34,6 +34,27 @@ which satisfies create_app()'s FLASK_ENV requirement.
 Note: if LOAD_MODELS is not set to 0, create_app() will still eagerly load the
 ML + LLM stack, so the worker may take longer to start and may print many logs.
 That is expected in the current design and will be improved later.
+
+Analysis worker + reaper (Stage 3)
+----------------------------------
+The message-analysis pipeline runs on the dedicated "ml" queue and needs the models:
+
+    LOAD_MODELS=1 .venv/bin/python -m celery -A celery_worker.celery worker \
+        -Q ml --pool=solo --loglevel=info
+
+--pool=solo stays on macOS because of numpy/joblib fork-safety. On production Linux,
+the default prefork pool may be used so the task's soft/hard time limits are enforced.
+The email/default worker keeps LOAD_MODELS=0 and consumes the default "celery" queue.
+
+The reaper task (sweep_stuck_analyses), marks messages left in PENDING/PROCESSING past
+ANALYSIS_STUCK_AFTER_SECONDS (default 900s) as FAILED. It is the backstop for hard-kill,
+OOM, orphaned messages, or other failures that in-task cleanup cannot reach.
+
+The reaper is DB-only, runs on the default queue, and can be served by the
+LOAD_MODELS=0 email/default worker. Schedule it with Celery beat. Run only one beat
+scheduler per deployment:
+
+    celery -A celery_worker.celery beat --loglevel=info
 """
 
 from app import create_app
