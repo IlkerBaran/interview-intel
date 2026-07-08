@@ -29,6 +29,9 @@ See [ADR-0001](0001-record-architecture-decisions.md) for why this practice exis
 | [0006](0006-build-token-bearing-emails-in-the-worker.md)        | Build Token-Bearing Emails in the Worker        | Accepted |
 | [0007](0007-at-least-once-email-delivery.md)                    | At-Least-Once Email Delivery, Latest-Token-Wins | Accepted |
 | [0008](0008-gate-eager-ml-loading-behind-load-models.md)        | Gate Eager ML/LLM Loading Behind LOAD_MODELS    | Accepted |
+| [0009](0009-asynchronous-analysis-ux-via-status-polling.md)     | Asynchronous Analysis UX via Status Polling     | Accepted |
+| [0010](0010-analysis-on-dedicated-ml-queue-sequential-enrichment.md) | Analysis on a Dedicated ML Queue, Enrichment Sequential | Accepted |
+| [0011](0011-analysis-task-reliability-and-terminal-state.md)    | Analysis Task Reliability and Terminal State    | Accepted |
 
 ## Adding a new ADR
 
