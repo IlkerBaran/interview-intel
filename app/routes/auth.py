@@ -1,14 +1,20 @@
 from werkzeug.security import generate_password_hash, check_password_hash
+import json
 import logging
+from datetime import datetime, UTC
 
-from flask import Blueprint, render_template, redirect, url_for, flash, session
+from flask import Blueprint, render_template, redirect, url_for, flash, session, Response
 from flask_login import login_user, logout_user, current_user, login_required
 
 from app.extensions import db
-from app.forms.auth_forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm
+from app.forms.auth_forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, ChangePasswordForm
 from app.models import User
 from app.services.auth_service import verify_email_token, verify_password_reset_token
-from app.services.email_service import queue_verification_email, queue_password_reset_email
+from app.services.email_service import (
+    queue_verification_email,
+    queue_password_reset_email,
+    queue_password_changed_email,
+)
 from app.utils import safe_redirect, mask_email
 
 
@@ -118,6 +124,102 @@ def delete_account():
         return redirect(url_for("dashboard.index"))
 
 
+@auth_bp.route("/account", methods=["GET"])
+@login_required
+def account():
+    """Account page — change password, account info, data export, delete account."""
+    return render_template("auth/account.html", change_password_form=ChangePasswordForm())
+
+
+@auth_bp.route("/account/password", methods=["POST"])
+@login_required
+def change_password():
+    """
+    Change the logged-in user's password.
+    The current password must verify against the stored hash before the new one is set.
+    """
+    form = ChangePasswordForm()
+
+    if form.validate_on_submit():
+        user = current_user._get_current_object()
+
+        # Reuse User.verify_password() → werkzeug check_password_hash
+        if not user.verify_password(form.current_password.data):
+            form.current_password.errors.append("Current password is incorrect.")
+            return render_template("auth/account.html", change_password_form=form)
+
+        # Reuse the User.password setter → werkzeug generate_password_hash
+        user.password = form.password.data
+
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.error(
+                "Failed to change password for user_id=%s error_type=%s",
+                user.id, type(e).__name__,
+                extra={"user_id": user.id, "error_type": type(e).__name__},
+            )
+            flash("Something went wrong. Please try again.", "danger")
+            return render_template("auth/account.html", change_password_form=form)
+
+        logger.info("Password changed for user_id=%s", user.id, extra={"user_id": user.id})
+        queue_password_changed_email(user.id)   # background security notification; don't block the response
+        flash("Password updated successfully.", "success")
+        return redirect(url_for("auth.account"))
+
+    # Validation errors (empty / too short / mismatch) → re-render with the section open
+    return render_template("auth/account.html", change_password_form=form)
+
+
+@auth_bp.route("/account/export", methods=["GET"])
+@login_required
+def export_data():
+    """
+    Export all of the current user's data (messages + analyses + tasks) as JSON.
+    Strictly scoped to current_user: data is read only through the user's own
+    relationships, so no other user's records can be included.
+    """
+    user = current_user._get_current_object()
+
+    messages_data = []
+    for message in user.messages:                      # user-scoped relationship
+        entry = message.to_dict()
+        entry["analysis_result"] = (
+            message.analysis_result.to_dict() if message.analysis_result else None
+        )
+        entry["tasks"] = [
+            {
+                "task_name": t.task_name,
+                "description": t.description,
+                "priority": t.priority,
+                "is_completed": t.is_completed,
+                "due_date": t.due_date.isoformat() if t.due_date else None,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            }
+            for t in message.tasks
+        ]
+        messages_data.append(entry)
+
+    export = {
+        "account": {
+            "email": user.email,
+            "is_verified": user.is_verified,
+            "joined": user.created_at.isoformat() if user.created_at else None,
+        },
+        "exported_at": datetime.now(UTC).isoformat(),
+        "messages": messages_data,
+    }
+
+    payload = json.dumps(export, indent=2, ensure_ascii=False)
+    filename = f"interview-intel-export-{datetime.now(UTC).strftime('%Y%m%d')}.json"
+    return Response(
+        payload,
+        mimetype="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     """
@@ -153,7 +255,6 @@ def login():
                 return redirect(url_for("auth.unverified"))
 
             login_user(user, form.remember_me.data)
-            flash("You have been logged in successfully.", "success")
 
             # safe_redirect() blocks external URLs and JavaScript: schemes — see utils.py
             return safe_redirect("dashboard.index")

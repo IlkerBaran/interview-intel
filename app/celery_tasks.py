@@ -301,6 +301,72 @@ def send_password_reset_email(self, user_id: int, idempotency_key: str) -> None:
     )
 
 
+@shared_task(name="app.celery_tasks.send_password_changed_email", **_EMAIL_TASK_OPTS)
+def send_password_changed_email(self, user_id: int, idempotency_key: str) -> None:
+    """
+    Send a 'your password was changed' security notification.
+
+    Notification only — no link, no token. The route enqueues this AFTER a
+    successful password-change commit; the worker re-fetches the user and sends.
+    No token is generated, so (unlike the verify/reset tasks) there is nothing
+    to persist here.
+    """
+    user = db.session.get(User, user_id)
+    if user is None:
+        logger.warning(
+            "send_password_changed_email: user_id=%s not found; skipping",
+            user_id,
+            extra={
+                "user_id": user_id,
+                "idempotency_key": idempotency_key
+            }
+        )
+        return
+
+    now = datetime.now(UTC)
+    changed_at = f"{now.strftime('%B')} {now.day}, {now.strftime('%Y')}"   # date only, portable, no leading zero
+    params = {
+        "to": [user.email],
+        "subject": "Your password was changed",
+        "html": render_template("email/password_changed.html", changed_at=changed_at),
+        "text": (
+            f"Your Interview Intel password was changed on {changed_at}.\n\n"
+            "If you made this change, no action is needed.\n\n"
+            "If you did NOT change your password, your account may be at risk. "
+            "Reset it immediately using 'Forgot password' on the sign-in page, "
+            "and contact us at interviewintel.app@gmail.com."
+        ),
+    }
+
+    if current_app.config.get("MAIL_SUPPRESS_SEND"):
+        # No URL in this notification, so the recorded entry is token-free.
+        _record_suppressed_send("password_changed", user.email, params["subject"], "", idempotency_key)
+        return
+
+    try:
+        _send_via_resend(params)
+    except _PERMANENT_SEND_ERRORS as exc:
+        logger.error(
+            "send_password_changed_email: permanent send failure user_id=%s error_type=%s "
+            "code=%s; not retrying",
+            user_id, type(exc).__name__, getattr(exc, "code", None),
+            extra={
+                "user_id": user_id,
+                "idempotency_key": idempotency_key
+            }
+        )
+        return
+    # Transient ResendError (incl. wrapped network errors) propagates → autoretry_for.
+    logger.info(
+        "Password-changed email sent user_id=%s idempotency_key=%s",
+        user_id, idempotency_key,
+        extra={
+            "user_id": user_id,
+            "idempotency_key": idempotency_key
+        }
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Stage 3 — message analysis on the dedicated ML queue
 # ═══════════════════════════════════════════════════════════════════════════════

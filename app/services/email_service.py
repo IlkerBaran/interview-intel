@@ -92,3 +92,25 @@ def queue_password_reset_email(user_id: int) -> bool:
         return False
 
 
+def queue_password_changed_email(user_id: int) -> bool:
+    """
+    Enqueue a 'password changed' security notification for the given user id.
+    Returns True if enqueued, False if enqueueing failed.
+    """
+    try:
+        from app.celery_tasks import send_password_changed_email
+
+        send_password_changed_email.delay(user_id, uuid4().hex)
+        return True
+    except Exception as e:
+        logger.error(
+            "Failed to enqueue password changed email user_id=%s error_type=%s",
+            user_id, type(e).__name__,
+            extra={
+                "user_id": user_id,
+                "error_type": type(e).__name__
+            }
+        )
+        return False
+
+

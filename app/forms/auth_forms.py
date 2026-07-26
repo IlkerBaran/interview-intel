@@ -99,3 +99,31 @@ class ResetPasswordForm(FlaskForm):
     )
 
     submit = SubmitField("Update password")
+
+
+class ChangePasswordForm(FlaskForm):
+    current_password = PasswordField(
+        "Current Password",
+        validators=[DataRequired(message="Enter your current password.")],
+        render_kw={"placeholder": "Enter current password"},
+    )
+
+    password = PasswordField(
+        "New Password",
+        validators=[
+            DataRequired(message="Password is required."),
+            Length(min=8, max=255, message="Password must be between 8 and 255 characters."),
+        ],
+        render_kw={"placeholder": "Enter new password"},
+    )
+
+    confirm_password = PasswordField(
+        "Confirm New Password",
+        validators=[
+            DataRequired(message="Please confirm your password."),
+            EqualTo("password", message="Passwords must match."),
+        ],
+        render_kw={"placeholder": "Re-enter new password"},
+    )
+
+    submit = SubmitField("Update password")
