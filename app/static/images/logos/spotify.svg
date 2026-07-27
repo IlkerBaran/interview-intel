@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Spotify">
+  <circle cx="24" cy="24" r="20" fill="#1a1208"/>
+  <g fill="none" stroke="#f7f2e8" stroke-width="3.2" stroke-linecap="round">
+    <path d="M13.5 19.5 Q24 16.5 34.5 20.5"/>
+    <path d="M15 25.5 Q24 22.8 32.5 26.5"/>
+    <path d="M16.5 31 Q24 28.8 30.5 31.8"/>
+  </g>
+</svg>

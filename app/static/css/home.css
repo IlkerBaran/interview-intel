@@ -1,0 +1,850 @@
+
+    /* ══════════════════════════════════════════
+       BASE OVERRIDES
+       Ensures beige background at every level so
+       the browser never paints a gray fallback.
+       Strips the container width and padding that
+       style.css adds, which would expose the raw
+       document background on the sides and top.
+    ══════════════════════════════════════════ */
+    html {
+        background: #f5ede0;
+        min-height: 100%;
+        overscroll-behavior-y: contain; /* prevents gray browser overscroll area */
+    }
+
+    body {
+        background: #f5ede0;
+        overflow-x: hidden;
+        min-height: 100%;
+        position: relative;
+    }
+
+    /* Warm cream floor fixed behind all layers */
+    body::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: #f5ede0;
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    .container.main-content,
+    .main-content {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #f5ede0;
+    }
+
+
+    /* ══════════════════════════════════════════
+       NAVBAR
+       Fixed over the cream hero; starts transparent,
+       transitions to solid cream once the user scrolls
+       past the midpoint. JS adds .scrolled at navSnap.
+       Higher specificity than style.css's .navbar so
+       transitions animate without needing !important.
+    ══════════════════════════════════════════ */
+    .page-home .navbar {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%;
+        z-index: 1000;
+        /* Background driven by --nav-bg-alpha (set by JS on every scroll frame) */
+        background: rgba(245,237,224, var(--nav-bg-alpha, 0));
+        border-bottom: 1px solid transparent;
+        box-shadow: none;
+        /* Only transition text-related properties; background/border/shadow are scroll-driven */
+        transition: none;
+    }
+
+    /* All color-bearing children share one transition rule */
+    .page-home .navbar .logo,
+    .page-home .navbar .nav-links a,
+    .page-home .navbar .nav-links a::after,
+    .page-home .navbar .nav-toggle          { transition: color 0.6s ease, background-color 0.6s ease; }
+
+    /* Dark colors for legibility over the cream hero */
+    .page-home .navbar .logo                { color: #1a1208; }
+    .page-home .navbar .nav-links a         { color: #4a3f32; }
+    .page-home .navbar .nav-links a:hover,
+    .page-home .navbar .nav-links a.active  { color: #8b5e3c; }
+    .page-home .navbar .nav-links a::after  { background-color: #1a1208; }
+    .page-home .navbar .nav-toggle          { color: #1a1208; }
+
+    .page-home .navbar .btn-secondary {
+        color: #1a1208;
+        border-color: #c4b9aa;
+        background: transparent;
+        transition: color 0.4s ease, border-color 0.4s ease, background 0.4s ease;
+    }
+    .page-home .navbar .btn-secondary:hover {
+        color: #1a1208;
+        border-color: #a89b88;
+        background: rgba(26,18,8,0.06);
+    }
+
+    /* Scrolled state — warmer, darker tone; blur for depth */
+    .page-home .navbar.scrolled {
+        background-color: rgba(245,237,224,0.95);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+    .page-home .navbar.scrolled .logo               { color: #1a1208; }
+    .page-home .navbar.scrolled .nav-links a        { color: #4a3f32; }
+    .page-home .navbar.scrolled .nav-links a:hover,
+    .page-home .navbar.scrolled .nav-links a.active { color: #8b5e3c; }
+    .page-home .navbar.scrolled .nav-links a::after { background-color: #1a1208; }
+    .page-home .navbar.scrolled .nav-toggle         { color: #1a1208; }
+    .page-home .navbar.scrolled .btn-secondary {
+        color: #1a1208;
+        border-color: #c4b9aa;
+        background: transparent;
+    }
+    .page-home .navbar.scrolled .btn-secondary:hover { background: rgba(26,18,8,0.08); }
+
+
+    /* ══════════════════════════════════════════
+       FLOATING-LOGOS HERO  (static structure)
+       Full-viewport cream hero. Company-logo chips
+       are absolutely positioned in a constellation
+       around the centered headline + CTA.
+       #hero-focal is the convergence target for the
+       later GSAP "unite" animation; .hero-logo chips
+       carry data-logo for JS selection. No motion yet.
+    ══════════════════════════════════════════ */
+    .hero {
+        position: relative;
+        min-height: max(100vh, 700px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 110px 24px 72px;
+        background: #f5ede0;
+        overflow: hidden;
+    }
+
+    /* Constellation layer — sits behind the centered content */
+    .hero-logos {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    .hero-logo {
+        position: absolute;
+        width: 64px;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 16px;
+        box-shadow: 0 6px 20px rgba(26,18,8,0.06);
+        /* Independent transform channels so the motion layers never fight over
+           one `transform`: GSAP's scroll convergence writes the `transform`
+           matrix (x/y/scale), while idle drift + cursor repulsion write the
+           `translate`/`rotate` properties directly from JS (hero-animation.js)
+           and the browser composites them together. With no JS (reduced-motion
+           / static) these stay unset → no offset, hero renders as authored. */
+        will-change: transform, translate, rotate;
+    }
+    .hero-logo img {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+        display: block;
+        opacity: 0.92;
+    }
+
+    /* Desktop constellation — scattered around the central text safe-zone.
+       Values are top-left corners as a % of the hero box. */
+    .hero-logo--google    { top: 16%; left: 10%; }
+    .hero-logo--microsoft { top:  9%; left: 33%; }
+    .hero-logo--apple     { top: 13%; left: 62%; }
+    .hero-logo--meta      { top: 20%; left: 82%; }
+    .hero-logo--amazon    { top: 44%; left: 88%; }
+    .hero-logo--linkedin  { top: 40%; left:  5%; }
+    .hero-logo--netflix   { top: 70%; left: 12%; }
+    .hero-logo--slack     { top: 80%; left: 33%; }
+    .hero-logo--airbnb    { top: 78%; left: 62%; }
+    .hero-logo--spotify   { top: 66%; left: 85%; }
+
+    /* Centered content — above the logo layer */
+    .hero-content {
+        position: relative;
+        z-index: 2;
+        max-width: 640px;
+    }
+
+    /* Focal point — logos converge into this in the GSAP step */
+    .hero-focal {
+        width: 140px;
+        height: 140px;
+        margin: 0 auto 28px;
+        border-radius: 12px;
+        background: #fffcf5;
+        border: 1px solid #e3d8c6;
+        box-shadow: 0 8px 28px rgba(139,94,60,0.14);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        box-sizing: border-box;
+    }
+
+    .hero-focal-logo {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: contain;
+    }
+
+    .hero-eyebrow {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #8b5e3c;
+        margin: 0 0 14px;
+    }
+
+    .hero-headline {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #1a1208;
+        letter-spacing: -1.2px;
+        line-height: 1.1;
+        margin: 0 0 18px;
+    }
+
+    .hero-sub {
+        font-size: 1.05rem;
+        color: #746857;
+        line-height: 1.75;
+        max-width: 540px;
+        margin: 0 auto 32px;
+    }
+
+    .hero-cta {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        flex-wrap: wrap;
+    }
+
+    .hero-btn {
+        display: inline-block;
+        background: #8b5e3c;
+        color: #f7f2e8;
+        padding: 14px 32px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .hero-btn:hover {
+        background: #a06d47;
+        transform: translateY(-1px);
+        box-shadow: 0 8px 28px rgba(139,94,60,0.45);
+    }
+
+    .hero-signin {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #8b5e3c;
+        text-decoration: none;
+    }
+    .hero-signin:hover { text-decoration: underline; }
+
+    /* Disclaimer — makes the "example employers, not partners" framing explicit */
+    .hero-logos-note {
+        position: relative;
+        z-index: 2;
+        margin: 52px auto 0;
+        max-width: 460px;
+        font-size: 0.72rem;
+        color: rgba(116,104,87,0.75);
+        line-height: 1.5;
+    }
+
+    /* Decorative scroll hint under the hero disclaimer. Pure-CSS bob, not interactive.
+       Not referenced by hero-animation.js, so it never touches the ScrollTrigger/pin. */
+    .hero-scroll-hint {
+        position: relative;
+        z-index: 2;
+        margin: 20px auto 0;
+        color: #8b5e3c;                 /* existing terracotta accent — palette unchanged */
+        line-height: 0;
+        animation: heroScrollHintBob 2.4s ease-in-out infinite;
+    }
+    .hero-scroll-hint svg { display: block; margin: 0 auto; opacity: 0.65; }
+
+    @keyframes heroScrollHintBob {
+        0%, 100% { transform: translateY(0); }
+        50%      { transform: translateY(7px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .hero-scroll-hint { animation: none; }
+    }
+
+
+    /* ══════════════════════════════════════════
+       SHARED SECTION UTILITIES
+    ══════════════════════════════════════════ */
+    .section-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #8b5e3c;
+        margin-bottom: 12px;
+    }
+
+    .section-title {
+        font-size: 1.9rem;
+        font-weight: 700;
+        color: #1a1208;
+        letter-spacing: -0.5px;
+        margin: 0 0 14px;
+    }
+
+    .section-subtitle {
+        font-size: 1rem;
+        color: #746857;
+        max-width: 500px;
+        margin: 0 auto;
+        line-height: 1.7;
+    }
+
+
+    /* ── PAIN POINTS ── */
+    .pain-section { padding: 96px 0 80px; }
+    .pain-inner   { max-width: 1060px; margin: 0 auto; padding: 0 40px; }
+    .pain-header  { margin-bottom: 52px; }
+    .pain-header .section-title {
+        font-size: 2.4rem;
+        font-weight: 700;
+        letter-spacing: -0.8px;
+        line-height: 1.15;
+        margin: 0;
+    }
+    .pain-list { display: flex; flex-direction: column; }
+    .pain-row {
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        gap: 48px;
+        padding: 22px 0;
+        border-bottom: 1px solid rgba(26,18,8,0.09);
+        align-items: baseline;
+    }
+    .pain-row:first-child { border-top: 1px solid rgba(26,18,8,0.09); }
+    .pain-keyword {
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #8b5e3c;
+        line-height: 1.5;
+    }
+    .pain-desc {
+        font-size: 1rem;
+        font-weight: 400;
+        color: #1a1208;
+        line-height: 1.55;
+        margin: 0;
+    }
+    .pain-item {
+        font-size: 1.05rem;
+        color: #1a1208;
+        line-height: 1.55;
+        padding: 20px 0;
+        border-bottom: 1px solid rgba(26,18,8,0.09);
+    }
+    .pain-item:first-child { border-top: 1px solid rgba(26,18,8,0.09); }
+    .pain-item::before {
+        content: "—";
+        color: #8b5e3c;
+        font-weight: 700;
+        margin-right: 14px;
+    }
+
+
+    /* ── STATEMENT ── */
+    .statement-section { padding: 68px 0; text-align: center; }
+    .statement-inner {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 0 40px;
+    }
+    .statement-text {
+        font-size: 1.25rem;
+        font-weight: 400;
+        color: #5a4e3e;
+        letter-spacing: -0.05px;
+        line-height: 1.6;
+        margin: 0;
+        font-style: italic;
+    }
+    .statement-em {
+        color: #8b5e3c;
+        font-style: italic;
+        font-weight: 500;
+    }
+
+
+    /* ════════════════════════════════════════
+       PORTAL
+    ════════════════════════════════════════ */
+    .portal-section { padding: 72px 0 56px; }
+    .portal {
+        max-width: 1060px;
+        margin: 0 auto;
+        padding: 0 40px;
+    }
+
+    .portal-shell {
+        background: #f5ede0;              /* page floor — blends into the page */
+        border: none;
+        border-radius: 0;
+        position: relative;
+        overflow: hidden;
+        box-shadow: none;
+        transition: none;
+    }
+
+    .portal-shell::before { display: none; }   /* was brown radial glow */
+    .portal-shell::after  { display: none; }   /* was amber top line */
+    .portal-shell:hover              { box-shadow: none; }
+    .portal.is-open .portal-shell    { box-shadow: none; }
+
+    .portal.is-open .portal-shell::before {
+        width: 900px; height: 480px;
+        opacity: 0.38;
+    }
+
+    .portal-trigger {
+        width: 100%;
+        padding: 44px 52px;
+        background: #f5ede0;               /* cream — matches the section */
+        border: none;
+        border-bottom: 1px solid #e3d8c6;  /* subtle light divider */
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        font-family: 'Inter', sans-serif;
+        position: relative;
+        z-index: 1;
+        transition: padding 0.4s ease;
+    }
+    .portal.is-open .portal-trigger { padding-top: 28px; padding-bottom: 28px; }
+
+    .portal-trigger-text {
+        font-size: 1.05rem;
+        font-weight: 500;
+        color: #1a1208;
+        letter-spacing: 0.01em;
+        line-height: 1;
+        transition: color 0.3s ease, text-shadow 0.35s ease;
+    }
+    .portal-shell:hover .portal-trigger-text {
+        color: #8b5e3c;
+    }
+    .portal.is-open .portal-trigger-text { color: #8a7d6b; }
+
+    .portal-arrow {
+        font-style: normal;
+        color: rgba(139,94,60,0.52);
+        font-size: 0.9rem;
+        display: inline-block;
+        line-height: 1;
+        transition: transform 0.42s cubic-bezier(0.4,0,0.2,1), color 0.3s ease;
+    }
+    .portal-shell:hover .portal-arrow {
+        color: rgba(139,94,60,0.82);
+        transform: translateX(5px);
+    }
+    .portal.is-open .portal-arrow {
+        color: rgba(139,94,60,0.42);
+        transform: rotate(90deg) translateX(2px);
+    }
+
+    .portal-body {
+        overflow: hidden;
+        max-height: 0;
+        transition: max-height 0.65s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        z-index: 1;
+    }
+    .portal.is-open .portal-body { max-height: 700px; }
+
+    .portal-body-inner {
+        padding: 0 52px 56px;
+        border-top: 1px solid rgba(139,94,60,0.13);
+        opacity: 0;
+        transition: opacity 0.4s ease 0.24s;
+    }
+    .portal.is-open .portal-body-inner { opacity: 1; }
+
+    /* Two-column content inside the portal */
+    .portal-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 64px;
+        align-items: start;
+        padding-top: 48px;
+    }
+
+    .portal-prose-title {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #f0e8d8;
+        letter-spacing: -0.4px;
+        line-height: 1.25;
+        margin: 0 0 20px;
+    }
+
+    .portal-prose-body {
+        font-size: 0.95rem;
+        color: rgba(240,210,170,0.5);
+        line-height: 1.8;
+        margin: 0;
+    }
+
+    .portal-image {
+        border-radius: 8px;
+        overflow: hidden;
+        aspect-ratio: 4 / 3;
+    }
+    .portal-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        opacity: 0.82;
+        border-radius: 8px;
+    }
+
+    /* Portal 1 — numbered "how it works" steps (on the dark shell) */
+    .portal-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+        padding-top: 48px;
+    }
+    .portal-step {
+        display: grid;
+        grid-template-columns: 48px 1fr;
+        gap: 22px;
+        align-items: start;
+    }
+    .portal-step-num {
+        font-size: 0.85rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        color: rgba(139,94,60,0.7);
+        line-height: 1.9;
+    }
+    .portal-step-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #1a1208;
+        letter-spacing: -0.2px;
+        margin: 0 0 8px;
+    }
+    .portal-step-desc {
+        font-size: 0.92rem;
+        color: #5c4f40;
+        line-height: 1.75;
+        margin: 0;
+    }
+
+    /* Portal 2 — "try it yourself" CTA (on the dark shell) */
+    .portal-cta-text {
+        font-size: 0.98rem;
+        color: rgba(240,210,170,0.55);
+        line-height: 1.8;
+        max-width: 520px;
+        margin: 0 0 28px;
+        padding-top: 48px;
+    }
+    .portal-cta-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .btn-portal-primary {
+        background-color: #8b5e3c;
+        color: #f7f2e8;
+        padding: 13px 30px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-decoration: none;
+        display: inline-block;
+        font-family: 'Inter', sans-serif;
+        transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn-portal-primary:hover {
+        background-color: #a06d47;
+        transform: translateY(-1px);
+        box-shadow: 0 8px 28px rgba(139,94,60,0.45);
+    }
+    .btn-portal-secondary {
+        background-color: rgba(253,244,232,0.08);
+        color: #e8d0a8;
+        padding: 13px 30px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-decoration: none;
+        border: 1px solid rgba(232,208,168,0.35);
+        display: inline-block;
+        font-family: 'Inter', sans-serif;
+        transition: background 0.15s ease, border-color 0.15s ease,
+                    color 0.15s ease, transform 0.15s ease;
+    }
+    .btn-portal-secondary:hover {
+        background-color: rgba(253,244,232,0.15);
+        border-color: rgba(232,208,168,0.6);
+        color: #fdf4e8;
+        transform: translateY(-1px);
+    }
+
+
+    /* ── STEPS (below portal) ── */
+    .steps-section { padding: 0 0 96px; }
+    .steps-inner {
+        max-width: 1060px;
+        margin: 0 auto;
+        padding: 0 40px;
+    }
+    .steps-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2px;
+        margin-top: 2px;
+    }
+    .step-box {
+        background: #ede0cc;
+        padding: 36px 32px;
+    }
+    .step-box:first-child { border-radius: 12px 0 0 12px; }
+    .step-box:last-child  { border-radius: 0 12px 12px 0; }
+    .step-num {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: rgba(139,94,60,0.55);
+        margin: 0 0 16px;
+    }
+    .step-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1a1208;
+        margin: 0 0 10px;
+        letter-spacing: -0.1px;
+    }
+    .step-desc {
+        font-size: 0.85rem;
+        color: #5c4f40;
+        line-height: 1.65;
+        margin: 0;
+    }
+
+
+    /* ── FEATURES ── */
+    .features-section { padding: 96px 0; }
+    .features-inner {
+        max-width: 1060px;
+        margin: 0 auto;
+        padding: 0 40px;
+        display: grid;
+        grid-template-columns: 5fr 7fr;
+        gap: 80px;
+        align-items: start;
+    }
+    .features-header-col { position: sticky; top: 96px; }
+    .features-header-col .section-label { margin-bottom: 14px; }
+    .features-header-col .section-title {
+        font-size: 2.1rem;
+        font-weight: 700;
+        letter-spacing: -0.7px;
+        line-height: 1.2;
+        margin: 0;
+    }
+    .features-list { display: flex; flex-direction: column; }
+    .feature-row {
+        padding: 28px 0;
+        border-bottom: 1px solid rgba(26,18,8,0.09);
+    }
+    .feature-row:first-child { border-top: 1px solid rgba(26,18,8,0.09); }
+    .feature-name {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1a1208;
+        margin: 0 0 10px;
+        letter-spacing: -0.1px;
+    }
+    .feature-desc {
+        font-size: 0.88rem;
+        color: #746857;
+        line-height: 1.7;
+        margin: 0;
+    }
+
+
+    /* ── FOOTER ── */
+    .site-footer {
+        background: #0d0a07;
+        border-top: 1px solid #1a1208;
+        padding: 56px 0 32px;
+    }
+    .footer-inner {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0 40px;
+    }
+    .footer-columns {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 40px;
+        margin-bottom: 44px;
+    }
+    .footer-col-title {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.7px;
+        text-transform: uppercase;
+        color: #8b5e3c;
+        margin: 0 0 16px;
+    }
+    .footer-col-links {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .footer-col-links a {
+        font-size: 0.875rem;
+        color: rgba(247,242,232,0.6);
+        text-decoration: none;
+        transition: color 0.15s ease;
+    }
+    .footer-col-links a:hover { color: #f7f2e8; }
+    /* not-yet-live placeholder: muted, non-interactive text (NOT a link) */
+    .footer-soon { font-size: 0.875rem; color: rgba(247,242,232,0.28); cursor: default; }
+    .footer-bottom {
+        border-top: 1px solid #1a1208;
+        padding-top: 24px;
+    }
+    .footer-copy { font-size: 0.8rem; color: rgba(247,242,232,0.3); margin: 0; }
+
+
+    /* ══════════════════════════════════════════
+       RESPONSIVE
+    ══════════════════════════════════════════ */
+    @media (max-width: 768px) {
+        /* ── HERO ── */
+        .hero { padding: 96px 20px 56px; }
+        .hero-headline { font-size: 2.1rem; letter-spacing: -0.8px; }
+        .hero-sub { font-size: 1rem; }
+        .hero-logo { width: 48px; height: 48px; border-radius: 12px; }
+        .hero-logo img { width: 26px; height: 26px; }
+        /* Drop the four outermost logos; pull the rest toward the corners */
+        .hero-logo--amazon,
+        .hero-logo--meta,
+        .hero-logo--airbnb,
+        .hero-logo--slack { display: none; }
+        .hero-logo--google    { top: 11%; left:  6%; }
+        .hero-logo--apple     { top:  9%; left: 70%; }
+        .hero-logo--linkedin  { top: 30%; left:  4%; }
+        .hero-logo--spotify   { top: 26%; left: 78%; }
+        .hero-logo--netflix   { top: 73%; left:  8%; }
+        .hero-logo--microsoft { top: 78%; left: 72%; }
+
+        .pain-inner,
+        .statement-inner,
+        .steps-inner,
+        .cta-inner,
+        .footer-inner { padding: 0 24px; }
+
+        .pain-header .section-title { font-size: 1.9rem; }
+        .pain-row {
+            grid-template-columns: 110px 1fr;
+            gap: 24px;
+        }
+
+        .portal { padding: 0 24px; }
+        .portal-trigger { padding: 32px 28px; }
+        .portal.is-open .portal-trigger { padding: 20px 28px; }
+        .portal-body-inner { padding: 0 28px 36px; }
+        .portal-content {
+            grid-template-columns: 1fr;
+            gap: 32px;
+            padding-top: 32px;
+        }
+        .portal-image { aspect-ratio: 16/9; }
+        .portal-step { grid-template-columns: 40px 1fr; gap: 16px; }
+
+        .steps-grid { grid-template-columns: 1fr; gap: 2px; }
+        .step-box:first-child { border-radius: 12px 12px 0 0; }
+        .step-box:last-child  { border-radius: 0 0 12px 12px; }
+
+        .features-inner {
+            grid-template-columns: 1fr;
+            gap: 40px;
+            padding: 0 24px;
+        }
+        .features-header-col { position: static; }
+        .features-header-col .section-title { font-size: 1.75rem; }
+
+        .cta-title   { font-size: 1.6rem; }
+        .section-title { font-size: 1.5rem; }
+
+        .footer-columns { grid-template-columns: repeat(2, 1fr); gap: 32px; }
+    }
+
+    @media (max-width: 480px) {
+        /* ── HERO ── */
+        .hero-headline { font-size: 1.8rem; }
+        .hero-logo { width: 40px; height: 40px; border-radius: 10px; }
+        .hero-logo img { width: 22px; height: 22px; }
+        .hero-cta { flex-direction: column; gap: 12px; }
+        .hero-btn { width: 100%; max-width: 280px; text-align: center; }
+        .hero-logo--google    { top:  9%; left:  4%; }
+        .hero-logo--apple     { top:  8%; left: 74%; }
+        .hero-logo--linkedin  { top: 24%; left:  3%; }
+        .hero-logo--spotify   { top: 22%; left: 80%; }
+        .hero-logo--netflix   { top: 78%; left:  5%; }
+        .hero-logo--microsoft { top: 80%; left: 76%; }
+        .pain-row {
+            grid-template-columns: 1fr;
+            gap: 4px;
+        }
+        .pain-keyword { letter-spacing: 0.12em; }
+        .portal-trigger { padding: 28px 20px; }
+        .portal.is-open .portal-trigger { padding: 18px 20px; }
+        .portal-body-inner { padding: 0 20px 28px; }
+        .steps-section { padding: 0 0 72px; }
+        .steps-inner { padding: 0 16px; }
+        .step-box { padding: 28px 24px; }
+        .footer-columns { grid-template-columns: 1fr; gap: 28px; }
+        .pain-header .section-title { font-size: 1.7rem; }
+        .statement-text { font-size: 1.1rem; }
+        .cta-title { font-size: 1.5rem; }
+    }
