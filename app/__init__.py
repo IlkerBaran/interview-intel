@@ -7,7 +7,7 @@ from sqlalchemy import func
 
 from .extensions import db, migrate, login_manager, csrf
 from .routes import register_blueprints
-from .models import User, Message, Task, AnalysisResult, Notification
+from .models import User, Message, Task, AnalysisResult, Notification, AgentRun
 from .services.ml_service import ml_service
 from .services.llm_service import llm_service
 from .celery_app import celery_init_app
@@ -72,6 +72,7 @@ def create_app():
             "Message": Message,
             "Task": Task,
             "AnalysisResult": AnalysisResult,
+            "AgentRun": AgentRun,
             "ml_service": ml_service,
             "llm_service": llm_service
         }
