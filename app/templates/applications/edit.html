@@ -1,18 +1,26 @@
 {% extends "base.html" %}
+{% from "macros.html" import form_field %}
 
 {% block title %}Edit Application — Interview Intel{% endblock %}
 
 {% block content %}
-<div style="max-width:560px;margin:0 auto;">
+{# On edit the form is populated from the record, so the details panel starts
+   open whenever any of those fields already has a value — the user sees their
+   existing data instead of having to hunt for it. Errors force it open too. #}
+{% set details_open = form.applied_date.data or form.source.data
+                      or form.posting_url.data or form.note.data
+                      or form.applied_date.errors or form.source.errors
+                      or form.posting_url.errors or form.note.errors %}
 
-    <div style="margin-bottom:20px;">
-        <a href="{{ url_for('applications.show_application', application_id=application.id) }}"
-           style="font-size:0.825rem;color:#8b5e3c;text-decoration:none;">
+<div class="form-page">
+
+    <div class="form-page-back">
+        <a href="{{ url_for('applications.show_application', application_id=application.id) }}">
             ← Back to {{ application.company }}
         </a>
     </div>
 
-    <div class="auth-card">
+    <div class="auth-card form-card-wide">
         <h1 class="auth-title">Edit application</h1>
         <p class="auth-subtitle">{{ application.company }} — {{ application.role }}</p>
 
@@ -21,70 +29,33 @@
               novalidate>
             {{ form.hidden_tag() }}
 
-            <!-- Company -->
-            <div class="form-group">
-                {{ form.company.label(class="form-label") }}
-                {{ form.company(class="form-input" + (" input-error" if form.company.errors else "")) }}
-                {% for error in form.company.errors %}
-                    <span class="field-error">{{ error }}</span>
-                {% endfor %}
+            {{ form_field(form.company) }}
+            {{ form_field(form.role) }}
+            {{ form_field(form.status) }}
+
+            {# ── optional extras — see details_open above ── #}
+            <div class="portal form-portal {% if details_open %}is-open{% endif %}">
+                <button type="button" class="portal-trigger form-portal-head"
+                        aria-expanded="{{ 'true' if details_open else 'false' }}">
+                    <span class="form-portal-title">Add details<span class="form-portal-optional">· optional</span></span>
+                    <i class="portal-arrow">›</i>
+                </button>
+
+                <div class="portal-body form-portal-body">
+                    <div class="portal-body-inner form-portal-body-inner">
+                        {{ form_field(form.applied_date) }}
+                        {{ form_field(form.source) }}
+                        {{ form_field(form.posting_url) }}
+                        {{ form_field(form.note) }}
+                    </div>
+                </div>
             </div>
 
-            <!-- Role -->
-            <div class="form-group">
-                {{ form.role.label(class="form-label") }}
-                {{ form.role(class="form-input" + (" input-error" if form.role.errors else "")) }}
-                {% for error in form.role.errors %}
-                    <span class="field-error">{{ error }}</span>
-                {% endfor %}
+            <div class="form-actions">
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('applications.show_application', application_id=application.id) }}"
+                   class="btn btn-secondary">Cancel</a>
             </div>
-
-            <!-- Status -->
-            <div class="form-group">
-                {{ form.status.label(class="form-label") }}
-                {{ form.status(class="form-input" + (" input-error" if form.status.errors else "")) }}
-                {% for error in form.status.errors %}
-                    <span class="field-error">{{ error }}</span>
-                {% endfor %}
-            </div>
-
-            <!-- Source -->
-            <div class="form-group">
-                {{ form.source.label(class="form-label") }}
-                {{ form.source(class="form-input" + (" input-error" if form.source.errors else "")) }}
-                {% for error in form.source.errors %}
-                    <span class="field-error">{{ error }}</span>
-                {% endfor %}
-            </div>
-
-            <!-- Posting URL -->
-            <div class="form-group">
-                {{ form.posting_url.label(class="form-label") }}
-                {{ form.posting_url(class="form-input" + (" input-error" if form.posting_url.errors else "")) }}
-                {% for error in form.posting_url.errors %}
-                    <span class="field-error">{{ error }}</span>
-                {% endfor %}
-            </div>
-
-            <!-- Applied date -->
-            <div class="form-group">
-                {{ form.applied_date.label(class="form-label") }}
-                {{ form.applied_date(class="form-input" + (" input-error" if form.applied_date.errors else ""), type="date") }}
-                {% for error in form.applied_date.errors %}
-                    <span class="field-error">{{ error }}</span>
-                {% endfor %}
-            </div>
-
-            <!-- Note -->
-            <div class="form-group">
-                {{ form.note.label(class="form-label") }}
-                {{ form.note(class="form-input" + (" input-error" if form.note.errors else "")) }}
-                {% for error in form.note.errors %}
-                    <span class="field-error">{{ error }}</span>
-                {% endfor %}
-            </div>
-
-            {{ form.submit(class="btn-auth") }}
 
         </form>
     </div>

@@ -41,7 +41,7 @@ class JobApplicationForm(FlaskForm):
     )
 
     source = StringField(
-        "Where did you find it?",
+        "Source",
         validators=[
             Optional(),
             Length(max=100, message="Source must be less than 100 characters.")
@@ -58,7 +58,7 @@ class JobApplicationForm(FlaskForm):
             Length(max=500),
         ],
         filters=[normalize_input],
-        render_kw={"placeholder": "https://"},
+        render_kw={"placeholder": "https://", "type": "url"},
     )
 
     applied_date = DateField(
@@ -85,10 +85,11 @@ class JobApplicationForm(FlaskForm):
 
     def validate_applied_date(self, field):
         """Ensure applied date is not in the future or too far in the past."""
-        if field.data and field.data > date.today():
-            raise ValidationError("Applied date cannot be in the future.")
-        if field.data < date(2000, 1, 1):
-            raise ValidationError("Applied date is too far in the past.")
+        if field.data:
+            if field.data > date.today():
+                raise ValidationError("Applied date cannot be in the future.")
+            if field.data < date(2000, 1, 1):
+                raise ValidationError("Applied date is too far in the past.")
 
 
     def validate_posting_url(self, field):

@@ -1,7 +1,7 @@
 {# ─────────────────────────────────────────────
    Reusable Jinja2 macros for Interview Intel.
    Import in any template with:
-   {% from "macros.html" import category_badge, urgency_badge %}
+   {% from "macros.html" import category_badge, urgency_badge, form_field %}
 ───────────────────────────────────────────────── #}
 
 
@@ -34,4 +34,23 @@
     {% else %}
         <span class="badge badge-gray">{{ urgency | title }}</span>
     {% endif %}
+{% endmacro %}
+
+
+{% macro form_field(field, optional=false, autofocus=false) %}
+    {# One labelled field + its errors. The "optional" marker is nested
+       INSIDE the label so the .form-label .optional rule applies. #}
+    <div class="form-group">
+        <label class="form-label" for="{{ field.id }}">
+            {{ field.label.text }}{% if optional %}<span class="optional">optional</span>{% endif %}
+        </label>
+        {{ field(class="form-input" + (" input-error" if field.errors else ""), autofocus=autofocus) }}
+        {% if field.errors %}
+            <div class="field-errors">
+                {% for error in field.errors %}
+                    <span class="field-error">{{ error }}</span>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
 {% endmacro %}
