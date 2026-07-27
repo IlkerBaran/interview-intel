@@ -87,3 +87,34 @@ document.querySelectorAll('.portal').forEach(function (portal) {
         trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     });
 });
+
+
+// ════════════════════════════════════════
+// FLASH MESSAGES
+// Manual dismiss (× button) + auto-dismiss after
+// 5s. Fades out, then removes the node — and the
+// wrapper once the last flash is gone.
+// ════════════════════════════════════════
+(function () {
+    const flashes = document.querySelectorAll('.flash');
+    if (!flashes.length) return;
+
+    const FADE_MS = 400;    // must match the .flash CSS transition
+    const AUTO_MS = 5000;   // time on screen before auto-dismiss
+
+    function dismiss(flash) {
+        if (flash.classList.contains('flash-hide')) return;   // already going
+        flash.classList.add('flash-hide');
+        setTimeout(() => {
+            const wrapper = flash.parentElement;
+            flash.remove();
+            if (wrapper && !wrapper.querySelector('.flash')) wrapper.remove();
+        }, FADE_MS);
+    }
+
+    flashes.forEach(flash => {
+        const closeBtn = flash.querySelector('.flash-close');
+        if (closeBtn) closeBtn.addEventListener('click', () => dismiss(flash));
+        setTimeout(() => dismiss(flash), AUTO_MS);
+    });
+})();

@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,12 +8,12 @@
     <meta name="description" content="{% block description %}Interview Intel - Organize your Interview Emails{% endblock %}">
     <title>{% block title %}Interview Intel{% endblock %}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block extra_styles %}{% endblock %}
 </head>
 
-
-<body>
+<body class="{% block body_class %}{% endblock %}">
     {# Navbar link helper → highlights active page and supports section prefix #}
     {% macro nav_link(endpoint, text, prefix=None) %}
         <a href="{{ url_for(endpoint) }}"
@@ -23,30 +22,74 @@
         </a>
     {% endmacro %}
 
+    {% if current_user.is_authenticated and not current_user.is_verified %}
+    <div style="background:#faeeda;border-bottom:1px solid #ebe5db;
+                padding:10px 24px;text-align:center;font-size:13px;
+                color:#633806;">
+      Please verify your email address to get full access.
+      <form method="POST"
+            action="{{ url_for('auth.resend_verification') }}"
+            style="display:inline;margin-left:12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit"
+                style="background:none;border:none;color:#8b5e3c;
+                       font-size:13px;font-weight:500;cursor:pointer;
+                       text-decoration:underline;padding:0;">
+          Resend confirmation email
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
     <nav class="navbar">
         <div class="container nav-container">
-            <a href="{{ url_for('main.home') }}" class="logo">Interview Intel</a>
+            <a href="{{ url_for('main.home') }}" class="logo"><span class="logo-w1">Interview</span><span class="logo-w2">Intel</span></a>
 
-            <!-- Hamburger button for mobile menu -->
             <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu">☰</button>
 
             <div class="nav-right" id="nav-right">
                 <div class="nav-links">
-                    <!-- Public links -->
                     {{ nav_link("main.home", "Home") }}
                     {{ nav_link("main.about", "About") }}
 
                     {% if current_user.is_authenticated %}
-                        <!-- Private links -->
-                        {{ nav_link("dashboard.index", "Dashboard") }}
-                        {{ nav_link("messages.index", "Messages", "messages") }}
-                        {{ nav_link("tasks.show_all_tasks", "Tasks", "tasks") }}
+                        {% if current_user.is_verified %}
+                            {{ nav_link("dashboard.index", "Dashboard") }}
+                            {{ nav_link("messages.index", "Messages", "messages") }}
+                            {{ nav_link("tasks.show_all_tasks", "Tasks", "tasks") }}
+                            {{ nav_link("applications.index", "Applications", "applications") }}
+                        {% endif %}
+                        {{ nav_link("auth.account", "Account") }}
                     {% else %}
-                        <!-- Auth links -->
                         {{ nav_link("auth.login", "Sign In") }}
                         {{ nav_link("auth.register", "Sign Up") }}
                     {% endif %}
                 </div>
+
+                {% if current_user.is_authenticated and current_user.is_verified %}
+                    <a href="{{ url_for('notifications.index') }}"
+                       class="nav-bell"
+                       aria-label="Notifications"
+                       style="position:relative;display:inline-flex;align-items:center;
+                              margin-right:12px;text-decoration:none;color:inherit;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"
+                             viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                             aria-hidden="true">
+                            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
+                            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
+                        </svg>
+                        {% if unread_count and unread_count > 0 %}
+                            <span class="nav-bell-badge"
+                                  style="position:absolute;top:-4px;right:-8px;
+                                         background:#c0392b;color:#fff;font-size:11px;
+                                         font-weight:600;line-height:1;padding:2px 5px;
+                                         border-radius:10px;min-width:16px;text-align:center;">
+                                {{ '99+' if unread_count > 99 else unread_count }}
+                            </span>
+                        {% endif %}
+                    </a>
+                {% endif %}
 
                 {% if current_user.is_authenticated %}
                     <form method="POST" action="{{ url_for('auth.logout') }}" class="logout-form">
@@ -58,23 +101,28 @@
         </div>
     </nav>
 
-    <!-- Display flash messages (success, error, etc.) from Flask backend -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             <section class="flash-wrapper container">
                 {% for category, message in messages %}
-                    <div class="flash flash-{{ category }}">
-                        {{ message }}
+                    <div class="flash flash-{{ category }}" role="alert">
+                        <span class="flash-text">{{ message }}</span>
+                        <button type="button" class="flash-close" aria-label="Dismiss">&times;</button>
                     </div>
                 {% endfor %}
             </section>
         {% endif %}
     {% endwith %}
 
+    {# Full-bleed content outside — used by home.html for the
+       fixed photo layer and hero text. After flash so alerts stay visible. #}
+    {% block pre_content %}{% endblock %}
+
     <main class="container main-content">
         {% block content %}{% endblock %}
     </main>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

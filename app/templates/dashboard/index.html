@@ -29,6 +29,10 @@
         margin-bottom: 32px;
     }
 
+    /* Column count follows the remaining tile count so removed tiles leave no empty
+       cells. Mobile still collapses to 2 cols via the media queries below. */
+    .stats-row--2 { grid-template-columns: repeat(2, 1fr); }
+
     .stat-card {
         background: #fffcf5;
         border: 1px solid #ebe5db;
@@ -87,6 +91,13 @@
         font-weight: 700;
         color: #1a1208;
         margin: 0;
+    }
+
+    /* Subtle inline counter beside a section heading (e.g. "Emails 12") */
+    .section-count {
+        font-weight: 500;
+        color: #a89880;      /* muted taupe — matches .stat-label / .welcome-text */
+        margin-left: 6px;
     }
 
     .section-link {
@@ -312,88 +323,62 @@
         </a>
     </div>
 
-    <!-- ── STATS ROW ── -->
-    <div class="stats-row">
-        <div class="stat-card">
-            <p class="stat-label">Total Emails</p>
-            <p class="stat-value">{{ total_messages }}</p>
-            <p class="stat-sub">analyzed</p>
-        </div>
-
-        <div class="stat-card">
-            <p class="stat-label">Active</p>
-            <p class="stat-value">{{ active_messages }}</p>
-            <p class="stat-sub">in pipeline</p>
-        </div>
-
-        <div class="stat-card">
-            <p class="stat-label">Tasks</p>
-            <p class="stat-value">{{ incomplete_tasks }}</p>
-            <p class="stat-sub">remaining</p>
-        </div>
-
-        <div class="stat-card">
-            <p class="stat-label">Completed</p>
-            <p class="stat-value">{{ completed_tasks }}</p>
-            <p class="stat-sub">tasks done</p>
-        </div>
-    </div>
-
-    <!-- ── APPLICATION STATS ── -->
-    <div class="stats-row" style="margin-bottom:20px;">
-        <div class="stat-card">
-            <p class="stat-label">Total Applications</p>
-            <p class="stat-value">{{ total_applications }}</p>
-            <p class="stat-sub">tracked</p>
-        </div>
-
-        <div class="stat-card">
-            <p class="stat-label">Applied</p>
-            <p class="stat-value">{{ applied_count }}</p>
-            <p class="stat-sub">awaiting response</p>
-        </div>
-
-        <div class="stat-card">
-            <p class="stat-label">Interviewing</p>
-            <p class="stat-value">{{ interviewing_count }}</p>
-            <p class="stat-sub">in process</p>
-        </div>
-
-        <div class="stat-card">
-            <p class="stat-label">Response Rate</p>
-            <p class="stat-value">{{ response_rate }}%</p>
-            <p class="stat-sub">
-                {% if applied_count > 0 %}
-                    {{ interviewing_count + offered_count + rejected_count }} of {{ applied_count }}
-                {% else %}
-                    no applications yet
-                {% endif %}
-            </p>
-        </div>
-    </div>
-
-    <!-- ── OFFER / REJECTED ROW ── -->
-    <div class="stats-row" style="grid-template-columns: repeat(2, 1fr);margin-bottom:32px;">
-        <div class="stat-card">
-            <p class="stat-label">Offered</p>
-            <p class="stat-value" style="color:#16a34a;">{{ offered_count }}</p>
-            <p class="stat-sub">offers received</p>
-        </div>
-
-        <div class="stat-card">
-            <p class="stat-label">Rejected</p>
-            <p class="stat-value" style="color:#6b5f4f;">{{ rejected_count }}</p>
-            <p class="stat-sub">rejections</p>
-        </div>
-    </div>
-
-    <!-- ── MAIN GRID ── -->
+    <!-- ── MAIN GRID: Application Pipeline (full width) → Emails + Tasks (side by side) ── -->
     <div class="dashboard-grid">
+
+        <!-- ── APPLICATIONS ── -->
+        <div class="section-card" style="grid-column: 1 / -1;">
+            <div class="section-header">
+                <h2 class="section-title">Application Pipeline <span class="section-count">{{ total_applications }}</span></h2>
+                <a href="{{ url_for('applications.index') }}" class="section-link">
+                    View all →
+                </a>
+            </div>
+
+            {% if total_applications > 0 %}
+                <div style="padding:16px 20px;">
+                    <!-- pipeline bar -->
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <a href="{{ url_for('applications.index', status='applied') }}"
+                           class="pipeline-pill">
+                            Applied
+                            <span class="pill-count">{{ applied_count }}</span>
+                        </a>
+                        <a href="{{ url_for('applications.index', status='interviewing') }}"
+                           class="pipeline-pill">
+                            Interviewing
+                            <span class="pill-count">{{ interviewing_count }}</span>
+                        </a>
+                        <a href="{{ url_for('applications.index', status='offered') }}"
+                           class="pipeline-pill">
+                            Offered
+                            <span class="pill-count">{{ offered_count }}</span>
+                        </a>
+                        <a href="{{ url_for('applications.index', status='rejected') }}"
+                           class="pipeline-pill">
+                            Rejected
+                            <span class="pill-count">{{ rejected_count }}</span>
+                        </a>
+                    </div>
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <p class="empty-state-title">No applications yet</p>
+                    <p class="empty-state-text">
+                        Start tracking your job search.
+                    </p>
+                    <a href="{{ url_for('applications.new_application') }}"
+                       class="empty-state-link">
+                        + Add your first application
+                    </a>
+                </div>
+            {% endif %}
+        </div>
 
         <!-- ── RECENT MESSAGES ── -->
         <div class="section-card">
             <div class="section-header">
-                <h2 class="section-title">Recent Emails</h2>
+                <h2 class="section-title">Emails <span class="section-count">{{ total_messages }}</span></h2>
                 <a href="{{ url_for('messages.index') }}" class="section-link">View all →</a>
             </div>
 
@@ -448,7 +433,7 @@
         <!-- ── RECENT TASKS ── -->
         <div class="section-card">
             <div class="section-header">
-                <h2 class="section-title">Pending Tasks</h2>
+                <h2 class="section-title">Tasks <span class="section-count">{{ incomplete_tasks }}</span></h2>
                 <a href="{{ url_for('tasks.show_all_tasks') }}" class="section-link">View all →</a>
             </div>
 
@@ -466,7 +451,7 @@
                                 <p class="task-name">{{ task.task_name }}</p>
                                 <div class="task-meta">
 
-                                    { urgency_badge(task.priority) }}
+                                    {{ urgency_badge(task.priority) }}
 
                                     {% if task.message and task.message.analysis_result %}
                                         <span style="font-size: 0.75rem; color: #a89880;">
@@ -486,55 +471,27 @@
             {% endif %}
         </div>
 
-        <!-- ── APPLICATIONS ── -->
-        <div class="section-card" style="grid-column: 1 / -1;">
-            <div class="section-header">
-                <h2 class="section-title">Application Pipeline</h2>
-                <a href="{{ url_for('applications.index') }}" class="section-link">
-                    View all →
-                </a>
-            </div>
+    </div>
 
-            {% if total_applications > 0 %}
-                <div style="padding:16px 20px;">
-                    <!-- pipeline bar -->
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <a href="{{ url_for('applications.index', status='applied') }}"
-                           class="pipeline-pill">
-                            Applied
-                            <span class="pill-count">{{ applied_count }}</span>
-                        </a>
-                        <a href="{{ url_for('applications.index', status='interviewing') }}"
-                           class="pipeline-pill">
-                            Interviewing
-                            <span class="pill-count">{{ interviewing_count }}</span>
-                        </a>
-                        <a href="{{ url_for('applications.index', status='offered') }}"
-                           class="pipeline-pill">
-                            Offered
-                            <span class="pill-count">{{ offered_count }}</span>
-                        </a>
-                        <a href="{{ url_for('applications.index', status='rejected') }}"
-                           class="pipeline-pill">
-                            Rejected
-                            <span class="pill-count">{{ rejected_count }}</span>
-                        </a>
-                    </div>
-                </div>
-            {% else %}
-                <div class="empty-state">
-                    <p class="empty-state-title">No applications yet</p>
-                    <p class="empty-state-text">
-                        Start tracking your job search.
-                    </p>
-                    <a href="{{ url_for('applications.new_application') }}"
-                       class="empty-state-link">
-                        + Add your first application
-                    </a>
-                </div>
-            {% endif %}
+    <!-- ── SUMMARY STATS (the two kept tiles) ── -->
+    <div class="stats-row stats-row--2" style="margin: 20px 0 0;">
+        <div class="stat-card">
+            <p class="stat-label">Response Rate</p>
+            <p class="stat-value">{{ response_rate }}%</p>
+            <p class="stat-sub">
+                {% if applied_count > 0 %}
+                    {{ interviewing_count + offered_count + rejected_count }} of {{ applied_count }}
+                {% else %}
+                    no applications yet
+                {% endif %}
+            </p>
         </div>
 
+        <div class="stat-card">
+            <p class="stat-label">Completed</p>
+            <p class="stat-value">{{ completed_tasks }}</p>
+            <p class="stat-sub">tasks done</p>
+        </div>
     </div>
 
 {% endblock %}

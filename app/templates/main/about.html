@@ -4,229 +4,7 @@
 {% block description %}Why Interview Intel was built, what it stands for, and who built it.{% endblock %}
 
 {% block extra_styles %}
-<style>
-    /* ── PAGE HEADER ── */
-    .about-hero {
-        padding: 64px 0 48px;
-        max-width: 680px;
-    }
-
-    .about-tag {
-        display: inline-block;
-        background-color: #e8e0d4;
-        color: #6b5f4f;
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.8px;
-        text-transform: uppercase;
-        padding: 5px 14px;
-        border-radius: 99px;
-        margin-bottom: 20px;
-    }
-
-    .about-title {
-        font-size: 2.4rem;
-        font-weight: 700;
-        color: #1a1208;
-        letter-spacing: -0.6px;
-        line-height: 1.2;
-        margin: 0 0 16px;
-    }
-
-    .about-title span {
-        color: #8b5e3c;
-    }
-
-    .about-lead {
-        font-size: 1.05rem;
-        color: #746857;
-        line-height: 1.8;
-        margin: 0;
-    }
-
-    /* ── DIVIDER ── */
-    .divider {
-        border: none;
-        border-top: 1px solid #e3ddd3;
-        margin: 0;
-    }
-
-    /* ── SECTION WRAPPER ── */
-    .about-section {
-        padding: 56px 0;
-        max-width: 680px;
-    }
-
-    .about-section-label {
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.8px;
-        text-transform: uppercase;
-        color: #8b5e3c;
-        margin-bottom: 12px;
-    }
-
-    .about-section-title {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #1a1208;
-        letter-spacing: -0.4px;
-        margin: 0 0 20px;
-    }
-
-    .about-text {
-        font-size: 0.95rem;
-        color: #4a3f32;
-        line-height: 1.85;
-        margin: 0 0 16px;
-    }
-
-    .about-text:last-child {
-        margin-bottom: 0;
-    }
-
-    /* ── VALUES ── */
-    .values-list {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-        margin-top: 28px;
-    }
-
-    .value-item {
-        display: flex;
-        gap: 16px;
-        align-items: flex-start;
-        background: #fffcf5;
-        border: 1px solid #ebe5db;
-        border-radius: 10px;
-        padding: 18px 20px;
-    }
-
-    .value-icon {
-        font-size: 1.2rem;
-        flex-shrink: 0;
-        margin-top: 2px;
-    }
-
-    .value-title {
-        font-size: 0.9rem;
-        font-weight: 700;
-        color: #1a1208;
-        margin: 0 0 4px;
-    }
-
-    .value-desc {
-        font-size: 0.85rem;
-        color: #746857;
-        line-height: 1.6;
-        margin: 0;
-    }
-
-    /* ── BUILDER CARD ── */
-    .builder-card {
-        background: #fffcf5;
-        border: 1px solid #ebe5db;
-        border-radius: 14px;
-        padding: 28px;
-        margin-top: 28px;
-        display: flex;
-        gap: 24px;
-        align-items: flex-start;
-    }
-
-    .builder-avatar {
-        width: 56px;
-        height: 56px;
-        border-radius: 50%;
-        background-color: #1a1208;
-        color: #f7f2e8;
-        font-size: 1.3rem;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        font-family: 'Inter', sans-serif;
-    }
-
-    .builder-info {
-        flex: 1;
-    }
-
-    .builder-name {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #1a1208;
-        margin: 0 0 2px;
-    }
-
-    .builder-role {
-        font-size: 0.8rem;
-        color: #8b5e3c;
-        font-weight: 600;
-        margin: 0 0 10px;
-    }
-
-    .builder-bio {
-        font-size: 0.875rem;
-        color: #4a3f32;
-        line-height: 1.7;
-        margin: 0 0 16px;
-    }
-
-    .builder-links {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-    }
-
-    .builder-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 14px;
-        border-radius: 6px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        text-decoration: none;
-        border: 1px solid #d9d2c8;
-        color: #4a3f32;
-        background: #f7f2e8;
-        transition: background 0.15s ease, transform 0.1s ease;
-    }
-
-    .builder-link:hover {
-        background: #ede8e0;
-        transform: translateY(-1px);
-    }
-
-    .builder-link-coming {
-        opacity: 0.5;
-        cursor: default;
-        pointer-events: none;
-    }
-
-    /* ── RESPONSIVE ── */
-    @media (max-width: 768px) {
-        .about-title {
-            font-size: 1.8rem;
-        }
-
-        .builder-card {
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .about-section {
-            max-width: 100%;
-        }
-
-        .about-hero {
-            max-width: 100%;
-        }
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/about.css') }}">
 {% endblock %}
 
 
@@ -247,7 +25,7 @@
     <!-- ── WHY I BUILT THIS ── -->
     <div class="about-section">
         <p class="about-section-label">The problem</p>
-        <h2 class="about-section-title">Students are managing hundreds of applications on paper</h2>
+        <h2 class="about-section-title">Students are managing hundreds of applications;</h2>
 
         <p class="about-text">
             After talking to students going through job searches, the same story kept coming up.
@@ -278,7 +56,7 @@
         <div class="values-list">
 
             <div class="value-item">
-                <span class="value-icon">🎯</span>
+                <span class="value-icon"></span>
                 <div>
                     <p class="value-title">Every student who works hard deserves a real chance</p>
                     <p class="value-desc">
@@ -289,7 +67,7 @@
             </div>
 
             <div class="value-item">
-                <span class="value-icon">⚡</span>
+                <span></span>
                 <div>
                     <p class="value-title">Technology should reduce stress, not add to it</p>
                     <p class="value-desc">
@@ -301,7 +79,7 @@
             </div>
 
             <div class="value-item">
-                <span class="value-icon">🤝</span>
+                <span class="value-icon"></span>
                 <div>
                     <p class="value-title">Programmers have a responsibility to help people</p>
                     <p class="value-desc">
@@ -318,8 +96,8 @@
 
     <!-- ── HOW I ACT ON IT ── -->
     <div class="about-section">
-        <p class="about-section-label">How I act on it</p>
-        <h2 class="about-section-title">Built with real problems in mind, not features for the sake of it</h2>
+        <p class="about-section-label">Why Interview Intel?</p>
+        <h2 class="about-section-title">Built with real problems in mind, down to every detail</h2>
 
         <p class="about-text">
             Every feature in Interview Intel exists because a real student needed it.
@@ -329,8 +107,7 @@
         </p>
 
         <p class="about-text">
-            I don't add things because they sound impressive. I add things because
-            they make the job search less overwhelming for someone going through it right now.
+            Every part of this app is designed for students by a student.
         </p>
     </div>
 

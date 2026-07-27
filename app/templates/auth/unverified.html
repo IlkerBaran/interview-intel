@@ -2,36 +2,50 @@
 
 {% block content %}
 <div style="max-width:480px;margin:80px auto;text-align:center;padding:0 20px;">
-  
+
+  {% if verification_context == "login_attempt" %}
+  <h1 style="color:#1a1208;font-size:24px;font-weight:500;margin:0 0 12px 0;">
+    Verify your email first
+  </h1>
+  <p style="color:#6b5f4f;font-size:15px;line-height:1.6;margin:0 0 32px 0;">
+    You need to verify your email before signing in.
+    Check the inbox for {% if email %}<strong>{{ email }}</strong>{% else %}your email{% endif %}.
+  </p>
+
+  {% elif verification_context == "resend_registration" %}
+  <h1 style="color:#1a1208;font-size:24px;font-weight:500;margin:0 0 12px 0;">
+    Check your inbox
+  </h1>
+  <p style="color:#6b5f4f;font-size:15px;line-height:1.6;margin:0 0 32px 0;">
+    We sent a new confirmation link to
+    {% if email %}<strong>{{ email }}</strong>{% else %}your email{% endif %}.
+    Please check your inbox.
+  </p>
+
+  {% else %}
   <h1 style="color:#1a1208;font-size:24px;font-weight:500;margin:0 0 12px 0;">
     Check your email
   </h1>
-  
   <p style="color:#6b5f4f;font-size:15px;line-height:1.6;margin:0 0 32px 0;">
-    We sent a confirmation link to <strong>{{ current_user.email }}</strong>.
+    We sent a confirmation link to
+    {% if email %}<strong>{{ email }}</strong>{% else %}your email{% endif %}.
     Click the link to verify your account and get full access.
   </p>
+  {% endif %}
 
   <p style="color:#6b5f4f;font-size:13px;margin:0 0 16px 0;">
     Didn't receive it? Check your spam folder or request a new link.
   </p>
 
   <form method="POST" action="{{ url_for('auth.resend_verification') }}">
-    {{ csrf_token() }}
-    <button type="submit" 
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit"
             style="background:#8b5e3c;color:#fffcf5;border:none;
                    padding:12px 28px;border-radius:8px;font-size:15px;
                    font-weight:500;cursor:pointer;">
       Resend confirmation email
     </button>
   </form>
-
-  <p style="margin:24px 0 0 0;">
-    <a href="{{ url_for('auth.logout') }}" 
-       style="color:#6b5f4f;font-size:13px;">
-      Log out
-    </a>
-  </p>
 
 </div>
 {% endblock %}
