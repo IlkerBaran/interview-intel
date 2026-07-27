@@ -241,9 +241,59 @@
         padding: 64px 24px;
     }
 
-    .empty-icon {
-        font-size: 2.5rem;
-        margin-bottom: 12px;
+    /* checklist symbol — VISIBLE BY DEFAULT; the animation is additive on top */
+    .empty-checklist {
+        width: 116px;
+        height: 96px;                /* explicit — SVG can't collapse to 0 */
+        display: block;
+        margin: 0 auto 22px;
+        overflow: visible;
+    }
+
+    .cl-line { fill: #ece3d5; }
+
+    /* DEFAULT resting state = fully drawn, tinted, VISIBLE
+       (this is also exactly the reduced-motion render) */
+    .cl-box {
+        fill: #f2e0cd;               /* warm tint, reads clearly on cream */
+        stroke: #c9a986;             /* visible terracotta-tan outline */
+        stroke-width: 2;
+    }
+
+    .cl-check {
+        fill: none;
+        stroke: #8b5e3c;             /* terracotta checkmark */
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 1;
+        stroke-dashoffset: 0;        /* DRAWN — visible whether or not the animation runs */
+    }
+
+    /* Animation is ADDITIVE only: no resting override, default fill-mode.
+       When it isn't painting, the visible rules above win. */
+    @media (prefers-reduced-motion: no-preference) {
+        .cl-check { animation: cl-draw 4s ease-in-out infinite; }
+        .cl-box   { animation: cl-tint 4s ease-in-out infinite; }
+        .cl-row-2 .cl-check, .cl-row-2 .cl-box { animation-delay: 0.4s; }
+        .cl-row-3 .cl-check, .cl-row-3 .cl-box { animation-delay: 0.8s; }
+    }
+
+    /* Keyframes REST at the drawn/visible state at BOTH ends (0% & 100%),
+       so backwards-fill during a stagger delay — and any frame the loop
+       rests on — still shows a drawn checklist. Draw-in is the 10%→34% gesture. */
+    @keyframes cl-draw {
+        0%   { stroke-dashoffset: 0; }   /* drawn */
+        10%  { stroke-dashoffset: 1; }   /* erase */
+        34%  { stroke-dashoffset: 0; }   /* redraw (one-by-one via the stagger) */
+        100% { stroke-dashoffset: 0; }   /* hold drawn */
+    }
+
+    @keyframes cl-tint {
+        0%   { fill: #f2e0cd; stroke: #c9a986; }
+        10%  { fill: #f7f2e8; stroke: #d9d2c8; }
+        34%  { fill: #f2e0cd; stroke: #c9a986; }
+        100% { fill: #f2e0cd; stroke: #c9a986; }
     }
 
     .empty-title {
@@ -256,27 +306,10 @@
     .empty-text {
         font-size: 0.875rem;
         color: #a89880;
-        margin-bottom: 20px;
+        max-width: 40ch;
+        margin: 0 auto;
+        line-height: 1.55;
     }
-
-    .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 0.875rem;
-        font-weight: 600;
-        font-family: 'Inter', sans-serif;
-        border: none;
-        cursor: pointer;
-        text-decoration: none;
-        transition: background 0.15s ease, transform 0.1s ease;
-    }
-
-    .btn:hover { transform: translateY(-1px); }
-    .btn-primary { background: #1a1208; color: #f7f2e8; }
-    .btn-primary:hover { background: #2d2010; }
 
     @media (max-width: 768px) {
         .task-card { flex-wrap: wrap; }
@@ -288,7 +321,7 @@
 
 {% block content %}
 
-    <!-- ── PAGE HEADER ── */
+    <!-- ── PAGE HEADER ── -->
     <div class="tasks-header">
         <div>
             <h1 class="page-title">Tasks</h1>
@@ -378,14 +411,34 @@
     {% else %}
 
         <div class="empty-state">
-            <div class="empty-icon">✅</div>
+
+            <svg class="empty-checklist" viewBox="0 0 150 124" fill="none"
+                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+
+                <g class="cl-row-1">
+                    <rect class="cl-box"  x="8"  y="8"   width="24" height="24" rx="6"/>
+                    <rect class="cl-line" x="44" y="16"  width="98" height="8"  rx="4"/>
+                    <path class="cl-check" pathLength="1" d="M14.5 20.8 L18.6 25 L26 15.4"/>
+                </g>
+
+                <g class="cl-row-2">
+                    <rect class="cl-box"  x="8"  y="50"  width="24" height="24" rx="6"/>
+                    <rect class="cl-line" x="44" y="58"  width="80" height="8"  rx="4"/>
+                    <path class="cl-check" pathLength="1" d="M14.5 62.8 L18.6 67 L26 57.4"/>
+                </g>
+
+                <g class="cl-row-3">
+                    <rect class="cl-box"  x="8"  y="92"  width="24" height="24" rx="6"/>
+                    <rect class="cl-line" x="44" y="100" width="64" height="8"  rx="4"/>
+                    <path class="cl-check" pathLength="1" d="M14.5 104.8 L18.6 109 L26 99.4"/>
+                </g>
+            </svg>
+
             <p class="empty-title">No tasks yet</p>
             <p class="empty-text">
-                Tasks are generated automatically when you analyze interview emails.
+                Tasks appear here after Interview Intel identifies
+                follow-ups and action items in an email you analyze.
             </p>
-            <a href="{{ url_for('messages.new_message') }}" class="btn btn-primary">
-                + Analyze an Email
-            </a>
         </div>
 
     {% endif %}

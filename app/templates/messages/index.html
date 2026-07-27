@@ -133,9 +133,50 @@
         padding: 64px 24px;
     }
 
-    .empty-icon {
-        font-size: 2.5rem;
-        margin-bottom: 12px;
+    /* ── EMPTY-STATE ENVELOPE ── visible by default; animation is additive on top */
+    .empty-envelope {
+        width: 116px;
+        height: 88px;               /* explicit — SVG can't collapse to 0 */
+        display: block;
+        margin: 0 auto 22px;
+        overflow: visible;
+    }
+
+    /* envelope body — ALWAYS visible (also the reduced-motion render) */
+    .env-body {
+        fill: #f2e0cd;              /* warm tint, reads clearly on cream */
+        stroke: #8b5e3c;            /* terracotta outline */
+        stroke-width: 2;
+        stroke-linejoin: round;
+    }
+
+    /* flap crease + check — terracotta strokes, DRAWN by default */
+    .env-flap, .env-check {
+        fill: none;
+        stroke: #8b5e3c;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 1;
+        stroke-dashoffset: 0;       /* DRAWN — visible whether or not the animation runs */
+    }
+    .env-flap  { stroke-width: 2.5; }
+    .env-check { stroke-width: 3; }
+
+    /* Animation is ADDITIVE only: no resting override, default fill-mode.
+       When it isn't painting, the visible rules above win. */
+    @media (prefers-reduced-motion: no-preference) {
+        .env-flap  { animation: env-draw 4s ease-in-out infinite; }
+        .env-check { animation: env-draw 4s ease-in-out infinite; animation-delay: 0.45s; }
+    }
+
+    /* Keyframes REST at the drawn/visible state at BOTH ends (0% & 100%),
+       so any frame the loop rests on still shows a drawn envelope.
+       The draw-in is the 12%→40% gesture; the 0.45s stagger draws flap then check. */
+    @keyframes env-draw {
+        0%   { stroke-dashoffset: 0; }   /* drawn */
+        12%  { stroke-dashoffset: 1; }   /* erase */
+        40%  { stroke-dashoffset: 0; }   /* redraw */
+        100% { stroke-dashoffset: 0; }   /* hold drawn */
     }
 
     .empty-title {
@@ -148,7 +189,9 @@
     .empty-text {
         font-size: 0.875rem;
         color: #a89880;
-        margin-bottom: 20px;
+        max-width: 42ch;
+        margin: 0 auto;
+        line-height: 1.55;
     }
 
     .btn {
@@ -167,8 +210,8 @@
     }
 
     .btn:hover { transform: translateY(-1px); }
-    .btn-primary { background: #1a1208; color: #f7f2e8; }
-    .btn-primary:hover { background: #2d2010; }
+    .btn-primary { background: #8b5e3c; color: #f7f2e8; }
+    .btn-primary:hover { background: #6f4b30; }
 
     @media (max-width: 768px) {
         .message-card-top { flex-wrap: wrap; }
@@ -278,12 +321,22 @@
     {% else %}
 
         <div class="empty-state">
-            <div class="empty-icon">📬</div>
-            <p class="empty-title">Your inbox is empty</p>
-            <p class="empty-text">Paste your first interview email to get started.</p>
-            <a href="{{ url_for('messages.new_message') }}" class="btn btn-primary">
-                + Analyze your first email
-            </a>
+
+            <svg class="empty-envelope" viewBox="0 0 150 114" fill="none"
+                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <!-- envelope body — always visible -->
+                <rect class="env-body" x="24" y="28" width="102" height="58" rx="9"/>
+                <!-- flap crease — additive draw-in -->
+                <path class="env-flap" pathLength="1" d="M28 33 L75 58 L122 33"/>
+                <!-- "analyzed" check — additive draw-in, staggered after the flap -->
+                <path class="env-check" pathLength="1" d="M92 70 L99 77 L112 61"/>
+            </svg>
+
+            <p class="empty-title">No messages yet</p>
+            <p class="empty-text">
+                Paste your first interview email, and Interview Intel will analyze it.
+                The company, role, important dates, and preparation details will appear here.
+            </p>
         </div>
 
     {% endif %}

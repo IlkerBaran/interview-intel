@@ -6,7 +6,7 @@
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
     <h1 class="page-title" style="margin:0;">Applications</h1>
-    <a href="{{ url_for('applications.new_application') }}" class="btn btn-primary btn-sm">
+    <a href="{{ url_for('applications.new_application') }}" class="btn btn-primary">
         + New application
     </a>
 </div>
@@ -83,23 +83,23 @@
 
 {% else %}
     <div class="empty">
-        <p class="empty-title">
-            {% if active_filter %}
+        {% if active_filter %}
+            <p class="empty-title">
                 No {{ active_filter.replace('_', ' ').lower() }} applications yet.
-            {% else %}
-                No applications yet.
-            {% endif %}
-        </p>
-        <p class="empty-text">
-            {% if active_filter %}
+            </p>
+            <p class="empty-text">
                 <a href="{{ url_for('applications.index') }}">View all applications</a>
                 or
                 <a href="{{ url_for('applications.new_application') }}">add a new one.</a>
-            {% else %}
-                <a href="{{ url_for('applications.new_application') }}">Add your first application</a>
-                to start tracking your job search.
-            {% endif %}
-        </p>
+            </p>
+        {% else %}
+            <p class="empty-title">No applications yet</p>
+            <p class="empty-text">
+                Add an application manually, or let Interview Intel
+                create one from an interview email.<br> Track it here from
+                applied to offer.
+            </p>
+        {% endif %}
     </div>
 {% endif %}
 

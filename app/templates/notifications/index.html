@@ -86,12 +86,12 @@
         font-weight: 600;
     }
 
-    .badge-blue   { background: #eff6ff; color: #2563eb; }
+    .badge-blue   { background: #f4ecda; color: #6f5e42; border: 1px solid #e6d8bd; }
     .badge-green  { background: #f0fdf4; color: #16a34a; }
     .badge-orange { background: #fff7ed; color: #ea580c; }
     .badge-gray   { background: #f0ede6; color: #6b5f4f; border: 1px solid #e0d9cf; }
 
-    .btn {
+    .notif-btn {
         display: inline-flex;
         align-items: center;
         gap: 6px;
@@ -108,7 +108,7 @@
         transition: background 0.15s ease, transform 0.1s ease;
     }
 
-    .btn:hover { background: #ede8e0; transform: translateY(-1px); }
+    .notif-btn:hover { background: #ede8e0; transform: translateY(-1px); }
 
     .notif-load-more {
         display: flex;
@@ -117,9 +117,54 @@
     }
 
     .empty-state { text-align: center; padding: 64px 24px; }
-    .empty-icon  { font-size: 2.5rem; margin-bottom: 12px; }
+
+    /* bell — matches the navbar bell shape; VISIBLE BY DEFAULT, sway is additive */
+    .empty-bell {
+        width: 100px;
+        height: 100px;              /* explicit — SVG can't collapse to 0 */
+        display: block;
+        margin: 0 auto 22px;
+        overflow: visible;
+    }
+
+    /* body — cream fill + terracotta outline (colors unchanged), ALWAYS visible */
+    .bell-body {
+        fill: #f2e0cd;              /* warm tint, reads clearly on cream */
+        stroke: #8b5e3c;           /* terracotta outline */
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        vector-effect: non-scaling-stroke;   /* keep navbar's 2px stroke weight at large size */
+    }
+
+    /* clapper — terracotta arc (navbar's clapper path), VISIBLE by default */
+    .bell-clapper {
+        fill: none;
+        stroke: #8b5e3c;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        vector-effect: non-scaling-stroke;
+    }
+
+    /* Gentle pendulum sway — ADDITIVE only; at rest the bell is upright & fully
+       visible. No bounce (ease-in-out), slow loop, pivots at the crown. */
+    @media (prefers-reduced-motion: no-preference) {
+        .bell-swing {
+            transform-box: view-box;
+            transform-origin: 12px 2px;
+            animation: bell-sway 3.6s ease-in-out infinite;
+        }
+    }
+
+    @keyframes bell-sway {
+        0%, 100% { transform: rotate(0deg); }   /* rest = upright, visible */
+        25%      { transform: rotate(6deg); }
+        75%      { transform: rotate(-6deg); }
+    }
+
     .empty-title { font-size: 1rem; font-weight: 700; color: #4a3f32; margin-bottom: 6px; }
-    .empty-text  { font-size: 0.875rem; color: #a89880; }
+    .empty-text  { font-size: 0.875rem; color: #a89880; max-width: 42ch; margin: 0 auto; line-height: 1.55; }
 </style>
 {% endblock %}
 
@@ -132,7 +177,7 @@
     </div>
 
     <button id="mark-all-btn"
-            class="btn"
+            class="notif-btn"
             data-url="{{ url_for('notifications.mark_all_read') }}"
             style="{% if not unread_count or unread_count == 0 %}display:none;{% endif %}">
         Mark all as read
@@ -150,7 +195,7 @@
 
         <div class="notif-load-more">
             <button id="load-more-btn"
-                    class="btn"
+                    class="notif-btn"
                     data-next-cursor="{{ next_cursor or '' }}"
                     style="{% if not has_more %}display:none;{% endif %}">
                 Load more
@@ -159,10 +204,17 @@
     </div>
 {% else %}
     <div class="empty-state">
-        <div class="empty-icon">🔔</div>
+        <svg class="empty-bell" viewBox="0 0 24 24" fill="none"
+             xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <g class="bell-swing">
+                <path class="bell-body" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+                <path class="bell-clapper" d="M10.3 19a1.94 1.94 0 0 0 3.4 0"/>
+            </g>
+        </svg>
         <p class="empty-title">No notifications yet</p>
         <p class="empty-text">
-            You'll see updates here when interviews or offers are detected in your emails.
+            Interview Intel notifies you here when it detects an interview invitation
+            or an offer in an email you analyze.
         </p>
     </div>
 {% endif %}
