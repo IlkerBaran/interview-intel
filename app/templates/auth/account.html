@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Account — Interview Intel{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .account-wrap { max-width: 640px; margin: 0 auto; }
+
+    /* accordion list — reuses the home page's .portal / .portal-trigger / is-open JS */
+    .acc { display: flex; flex-direction: column; gap: 12px; margin-top: 22px; }
+
+    .portal.acc-item {
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 12px;
+        overflow: hidden;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .portal.acc-item:hover        { border-color: #d9d2c8; }
+    .portal.acc-item.is-open      { border-color: #d9d2c8; box-shadow: 0 1px 3px rgba(60,44,26,0.05); }
+
+    /* header (clickable) — same arrow glyph + rotate as the home portals */
+    .portal-trigger.acc-head {
+        width: 100%;
+        padding: 16px 20px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        font-family: 'Inter', sans-serif;
+        text-align: left;
+    }
+    .acc-head-text { font-size: 0.95rem; font-weight: 600; color: #1a1208; transition: color 0.2s ease; }
+    .portal-arrow {
+        font-style: normal;
+        color: rgba(139,94,60,0.55);
+        font-size: 1rem;
+        line-height: 1;
+        display: inline-block;
+        transition: transform 0.42s cubic-bezier(0.4,0,0.2,1), color 0.3s ease;
+    }
+    .portal-trigger.acc-head:hover .acc-head-text { color: #8b5e3c; }
+    .portal-trigger.acc-head:hover .portal-arrow  { color: rgba(139,94,60,0.85); }
+    .portal.is-open .portal-arrow { transform: rotate(90deg); color: rgba(139,94,60,0.7); }
+
+    /* body (expand/collapse) — same max-height mechanism as the home portals */
+    .portal-body.acc-body {
+        overflow: hidden;
+        max-height: 0;
+        transition: max-height 0.5s cubic-bezier(0.4,0,0.2,1);
+    }
+    .portal.is-open .portal-body.acc-body { max-height: 640px; }
+
+    .portal-body-inner.acc-body-inner {
+        padding: 4px 20px 20px;
+        border-top: 1px solid #f0ece4;
+        opacity: 0;
+        transition: opacity 0.35s ease 0.15s;
+    }
+    .portal.is-open .portal-body-inner.acc-body-inner { opacity: 1; }
+
+    /* form fields (change password) */
+    .acc-field { margin-bottom: 16px; }
+    .acc-field label { display: block; font-size: 13px; font-weight: 500; color: #1a1208; margin-bottom: 6px; }
+    .acc-field input {
+        width: 100%; padding: 10px 14px; border: 1px solid #ebe5db; border-radius: 8px;
+        font-size: 15px; background: #fffcf5; box-sizing: border-box; font-family: 'Inter', sans-serif;
+    }
+    .acc-field input:focus { outline: none; border-color: #8b5e3c; }
+
+    /* password show/hide toggle — reused from the sign in / sign up pages */
+    .input-wrapper { position: relative; }
+    .acc-field .input-wrapper input { padding-right: 56px; }   /* room for the button */
+    .password-toggle {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #a89880;
+        font-size: 0.8rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        padding: 0;
+        transition: color 0.15s ease;
+    }
+    .password-toggle:hover { color: #4a3f32; }
+    .acc-error { color: #e24b4a; font-size: 12px; margin: 4px 0 0; }
+    .acc-hint  { font-size: 0.82rem; color: #a89880; line-height: 1.6; margin: 0 0 16px; }
+
+    /* account info rows */
+    .acc-info-row {
+        display: flex; justify-content: space-between; gap: 12px;
+        padding: 11px 0; border-bottom: 1px solid #f0ece4; font-size: 0.875rem;
+    }
+    .acc-info-row:last-child { border-bottom: none; }
+    .acc-info-label { color: #746857; }
+    .acc-info-val   { color: #1a1208; font-weight: 500; }
+    .acc-badge { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 0.72rem; font-weight: 600; }
+    .acc-badge.ok { background: #f0fdf4; color: #16a34a; }
+    .acc-badge.no { background: #fff7ed; color: #ea580c; }
+
+    /* danger accordion */
+    .portal.acc-item.acc-danger              { border-color: #fecaca; background: #fef2f2; }
+    .portal.acc-item.acc-danger .acc-head-text { color: #dc2626; }
+    .portal.acc-item.acc-danger .portal-arrow  { color: rgba(220,38,38,0.6); }
+    .portal.acc-item.acc-danger.is-open        { border-color: #fca5a5; }
+    .acc-danger .portal-body-inner.acc-body-inner { border-top-color: #fecaca; }
+    .acc-danger-text { font-size: 0.85rem; color: #7f1d1d; line-height: 1.6; margin: 0 0 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="account-wrap">
+    <h1 class="page-title">Account</h1>
+    <p class="page-subtitle">Manage your account settings.</p>
+
+    <div class="acc">
+
+        <!-- 1 · Change Password (opens automatically if the last submit had errors) -->
+        <div class="portal acc-item {% if change_password_form.errors %}is-open{% endif %}">
+            <button type="button" class="portal-trigger acc-head"
+                    aria-expanded="{{ 'true' if change_password_form.errors else 'false' }}">
+                <span class="acc-head-text">Change Password</span>
+                <i class="portal-arrow">›</i>
+            </button>
+            <div class="portal-body acc-body">
+                <div class="portal-body-inner acc-body-inner">
+                    <form method="POST" action="{{ url_for('auth.change_password') }}" novalidate>
+                        {{ change_password_form.hidden_tag() }}
+                        <div class="acc-field">
+                            {{ change_password_form.current_password.label }}
+                            <div class="input-wrapper">
+                                {{ change_password_form.current_password() }}
+                                <button type="button" class="password-toggle">Show</button>
+                            </div>
+                            {% for e in change_password_form.current_password.errors %}<p class="acc-error">{{ e }}</p>{% endfor %}
+                        </div>
+                        <div class="acc-field">
+                            {{ change_password_form.password.label }}
+                            <div class="input-wrapper">
+                                {{ change_password_form.password() }}
+                                <button type="button" class="password-toggle">Show</button>
+                            </div>
+                            {% for e in change_password_form.password.errors %}<p class="acc-error">{{ e }}</p>{% endfor %}
+                        </div>
+                        <div class="acc-field">
+                            {{ change_password_form.confirm_password.label }}
+                            <div class="input-wrapper">
+                                {{ change_password_form.confirm_password() }}
+                                <button type="button" class="password-toggle">Show</button>
+                            </div>
+                            {% for e in change_password_form.confirm_password.errors %}<p class="acc-error">{{ e }}</p>{% endfor %}
+                        </div>
+                        {{ change_password_form.submit(class="btn btn-primary") }}
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2 · Account Info (read-only) -->
+        <div class="portal acc-item">
+            <button type="button" class="portal-trigger acc-head" aria-expanded="false">
+                <span class="acc-head-text">Account Info</span>
+                <i class="portal-arrow">›</i>
+            </button>
+            <div class="portal-body acc-body">
+                <div class="portal-body-inner acc-body-inner">
+                    <div class="acc-info-row">
+                        <span class="acc-info-label">Email</span>
+                        <span class="acc-info-val">{{ current_user.email }}</span>
+                    </div>
+                    <div class="acc-info-row">
+                        <span class="acc-info-label">Status</span>
+                        <span class="acc-info-val">
+                            {% if current_user.is_verified %}
+                                <span class="acc-badge ok">Verified</span>
+                            {% else %}
+                                <span class="acc-badge no">Not verified</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="acc-info-row">
+                        <span class="acc-info-label">Joined</span>
+                        <span class="acc-info-val">{{ current_user.created_at.strftime('%B') }} {{ current_user.created_at.day }}, {{ current_user.created_at.strftime('%Y') }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3 · Export My Data -->
+        <div class="portal acc-item">
+            <button type="button" class="portal-trigger acc-head" aria-expanded="false">
+                <span class="acc-head-text">Export My Data</span>
+                <i class="portal-arrow">›</i>
+            </button>
+            <div class="portal-body acc-body">
+                <div class="portal-body-inner acc-body-inner">
+                    <p class="acc-hint">
+                        Download all of your messages and their analyses, plus your tasks,
+                        as a single JSON file. Only your own data is included.
+                    </p>
+                    <a href="{{ url_for('auth.export_data') }}" class="btn btn-secondary">Download JSON</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4 · Danger zone -->
+        <div class="portal acc-item acc-danger">
+            <button type="button" class="portal-trigger acc-head" aria-expanded="false">
+                <span class="acc-head-text">Delete my account</span>
+                <i class="portal-arrow">›</i>
+            </button>
+            <div class="portal-body acc-body">
+                <div class="portal-body-inner acc-body-inner">
+                    <p class="acc-danger-text">
+                        This permanently deletes your account and all associated data — every message you've
+                        submitted and its analysis, your tasks, applications, and notifications. This can't be undone.
+                    </p>
+                    <form method="POST" action="{{ url_for('auth.delete_account') }}"
+                          onsubmit="return confirm('Permanently delete your account and all your data? This cannot be undone.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-danger">Delete my account</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

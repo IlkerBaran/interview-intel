@@ -1,0 +1,39 @@
+/* Simple readable text pages (Privacy, Terms). Cream page bg comes from style.css. */
+.legal {
+    max-width: 720px;
+    margin: 0 auto;
+}
+.legal-header { margin-bottom: 28px; }
+.legal-updated {
+    font-size: 0.8rem;
+    color: #8a7d6b;
+    margin: 6px 0 0;
+}
+.legal h2 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1a1208;
+    letter-spacing: -0.2px;
+    margin: 30px 0 10px;
+}
+.legal p,
+.legal li {
+    font-size: 0.95rem;
+    color: #4a3f32;
+    line-height: 1.75;
+}
+.legal p  { margin: 0 0 14px; }
+.legal ul { margin: 0 0 14px; padding-left: 20px; }
+.legal li { margin-bottom: 6px; }
+.legal a  { color: #8b5e3c; text-decoration: none; }
+.legal a:hover { text-decoration: underline; }
+.legal-note {
+    margin-top: 30px;
+    padding: 16px 18px;
+    background: #fffcf5;
+    border: 1px solid #ebe5db;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    color: #5c4f40;
+    line-height: 1.7;
+}

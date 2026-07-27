@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy Policy — Interview Intel{% endblock %}
+{% block description %}How Interview Intel handles your data — in plain English.{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/legal.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="legal">
+
+    <div class="legal-header">
+        <h1 class="page-title">Privacy Policy</h1>
+        <p class="legal-updated">Last updated: July 2026</p>
+    </div>
+
+    <p>
+        Interview Intel is a personal portfolio project built by one developer — not a company.
+        It's provided free and as-is. This page explains, in plain English, what the app collects
+        and what happens to it. It isn't formal legal advice.
+    </p>
+
+    <h2>What I collect</h2>
+    <ul>
+        <li><strong>Your account email</strong> — so you can sign in, verify your account, and receive account emails.</li>
+        <li><strong>The message text you submit</strong> — the interview emails you paste in for analysis, plus any notes you add.</li>
+        <li><strong>Basic technical logs</strong> — standard server logs (used to keep the app running and debug issues).</li>
+    </ul>
+
+    <h2>Why I collect it</h2>
+    <ul>
+        <li>To create your account and sign you in.</li>
+        <li>To generate the interview analysis — reading the email text you submit and returning the category, urgency, extracted details, prep guidance, and tasks.</li>
+        <li>To send necessary account emails, like verification and password resets.</li>
+    </ul>
+
+    <h2>AI processing</h2>
+    <p>
+        To produce the analysis, the message text you submit is sent to a third-party AI provider —
+        <strong>Anthropic</strong> (the Claude API) — which processes it and returns the result.
+        Your email address is not sent to Anthropic; only the message content needed for the analysis is.
+        Anthropic handles that data under its own terms and privacy policy.
+    </p>
+
+    <h2>Who else sees your data</h2>
+    <p>
+        Account emails (verification, password reset) are delivered through an email provider
+        (<strong>Resend</strong>), which receives your email address to send them. Apart from the
+        AI and email providers above, your data isn't shared with anyone.
+        <strong>I don't sell your data.</strong>
+    </p>
+
+    <h2>Deleting your data</h2>
+    <p>
+        You can delete your account yourself at any time. Go to your
+        <a href="{{ url_for('auth.account') }}">Account</a> page and choose
+        <strong>Delete my account</strong>. This permanently removes your account and everything
+        tied to it — your submitted messages and their analysis, tasks, applications, and
+        notifications.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+        Questions about your data? Email
+        <a href="mailto:interviewintel.app@gmail.com">interviewintel.app@gmail.com</a>.
+    </p>
+
+    <div class="legal-note">
+        This is a personal portfolio project, provided as-is with no guarantees, and this page isn't
+        formal legal advice. Please don't paste anything you wouldn't want processed by a third-party
+        AI service — avoid highly sensitive personal information.
+    </div>
+
+</div>
+{% endblock %}

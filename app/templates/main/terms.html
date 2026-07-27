@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Terms of Service — Interview Intel{% endblock %}
+{% block description %}The simple terms for using Interview Intel, a personal portfolio project.{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/legal.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="legal">
+
+    <div class="legal-header">
+        <h1 class="page-title">Terms of Service</h1>
+        <p class="legal-updated">Last updated: July 2026</p>
+    </div>
+
+    <p>
+        Interview Intel is a personal portfolio project, built by one developer and offered for free.
+        By using it, you agree to these simple terms. Plain English — not corporate legalese, and not
+        formal legal advice.
+    </p>
+
+    <h2>The service</h2>
+    <p>
+        Interview Intel is a side/portfolio project, not a company or a commercial product. It's
+        provided <strong>as-is and as-available, with no warranty of any kind</strong>. It may change,
+        break, or go offline at any time.
+    </p>
+
+    <h2>Your responsibility</h2>
+    <p>
+        You're responsible for what you submit. Only paste content you have the right to share, and
+        don't submit anything illegal, abusive, or highly sensitive. The analysis is generated
+        automatically by ML/AI and can be wrong or incomplete — use your own judgment, and don't rely
+        on it for important decisions.
+    </p>
+
+    <h2>Your account</h2>
+    <p>
+        Keep your login details secure. I may suspend or remove accounts that misuse the service or
+        put it at risk. You can stop using the app and delete your account at any time from your
+        <a href="{{ url_for('auth.account') }}">Account</a> page (see the
+        <a href="{{ url_for('main.privacy') }}">Privacy Policy</a> for what deletion removes).
+    </p>
+
+    <h2>No warranty</h2>
+    <p>
+        The service is provided without warranties of any kind, and I'm not liable for any loss that
+        comes from using it. If it's not working for you, please just stop using it.
+    </p>
+
+    <h2>Privacy</h2>
+    <p>
+        See the <a href="{{ url_for('main.privacy') }}">Privacy Policy</a> for how your data is handled.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+        Questions? Email <a href="mailto:interviewintel.app@gmail.com">interviewintel.app@gmail.com</a>.
+    </p>
+
+    <div class="legal-note">
+        This is a personal portfolio project provided as-is, and this page isn't formal legal advice.
+    </div>
+
+</div>
+{% endblock %}
