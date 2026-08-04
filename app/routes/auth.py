@@ -6,7 +6,7 @@ from datetime import datetime, UTC
 from flask import Blueprint, render_template, redirect, url_for, flash, session, Response
 from flask_login import login_user, logout_user, current_user, login_required
 
-from app.extensions import db
+from app.extensions import db, limiter, user_key, pending_email_key
 from app.forms.auth_forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, ChangePasswordForm
 from app.models import User
 from app.services.auth_service import verify_email_token, verify_password_reset_token
@@ -27,6 +27,9 @@ _DUMMY_PASSWORD_HASH = generate_password_hash("dummy-timing-attack-mitigation")
 
 
 @auth_bp.route("/register", methods=["GET", "POST"])
+# Creates User rows unbounded and re-queues a verification email for an existing
+# unverified address. methods=["POST"] so viewing the form is never limited.
+@limiter.limit("5 per hour", methods=["POST"])
 def register():
     """
     Handle user registration, prevent duplicate accounts,
@@ -94,6 +97,8 @@ def register():
 
 @auth_bp.route("/delete-account", methods=["POST"])
 @login_required
+# Strict per-user limit because this is a destructive, rarely used action.
+@limiter.limit("3 per hour", key_func=user_key)
 def delete_account():
     """
     Delete the current user's account, remove all associated data,
@@ -133,6 +138,10 @@ def account():
 
 @auth_bp.route("/account/password", methods=["POST"])
 @login_required
+# Verifies the current password, so it is a brute-force target on a hijacked
+# session. Below @login_required so anonymous hits redirect without consuming
+# anyone's budget.
+@limiter.limit("5 per hour", key_func=user_key)
 def change_password():
     """
     Change the logged-in user's password.
@@ -174,6 +183,9 @@ def change_password():
 
 @auth_bp.route("/account/export", methods=["GET"])
 @login_required
+# Walks every message + analysis + task and builds the whole JSON in memory with
+# no pagination — expensive to repeat.
+@limiter.limit("5 per hour", key_func=user_key)
 def export_data():
     """
     Export all of the current user's data (messages + analyses + tasks) as JSON.
@@ -221,6 +233,11 @@ def export_data():
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
+# Brute-force protection. Keyed on IP, NOT the submitted email — see the note on
+# limiter in extensions.py: an email-keyed limit would turn 429-vs-200 into an
+# account-existence oracle and undo the _DUMMY_PASSWORD_HASH timing guard below.
+@limiter.limit("10 per minute", methods=["POST"])
+@limiter.limit("40 per hour", methods=["POST"])
 def login():
     """
     Authenticate user credentials, protect against timing attacks,
@@ -326,6 +343,11 @@ def unverified():
 
 
 @auth_bp.route("/resend-verification", methods=["POST"])
+# Sends real mail and is NOT @login_required — gated only by a session value, so
+# this is the sharpest mail-bomb surface in the app. Two limits: per IP, and per
+# target address so rotating IPs still can't flood one inbox.
+@limiter.limit("3 per hour")
+@limiter.limit("3 per hour", key_func=pending_email_key)
 def resend_verification():
     """
     Resend the email verification link to the current user.
@@ -360,6 +382,9 @@ def resend_verification():
 
 
 @auth_bp.route("/forgot-password", methods=["GET", "POST"])
+# Sends real mail. IP-keyed for the same enumeration reason as login: this view
+# deliberately flashes the same message whether or not the address is registered.
+@limiter.limit("3 per hour", methods=["POST"])
 def forgot_password():
     """
     Handle password reset requests.
@@ -396,6 +421,9 @@ def forgot_password():
     return render_template("auth/forgot_password.html", form=form)
 
 @auth_bp.route("/reset-password/<token>", methods=["GET", "POST"])
+# Limit password-reset submissions to reduce token-guessing and repeated
+# password-change attempts. Only POST submissions count; GET displays the form.
+@limiter.limit("5 per hour", methods=["POST"])
 def reset_password(token):
     """
     Handle password reset form submission.

@@ -15,29 +15,43 @@ class Config:
 
     Key behavior:
     - `Config` (base):
-      - Loads core settings such as `SECRET_KEY`, CSRF configuration, and database URI.
+      - Loads core settings such as `SECRET_KEY`, CSRF configuration, database URI,
+        Celery/Redis wiring, and rate-limiting settings.
       - Uses environment variables when available, with a fallback `SECRET_KEY`
         for development convenience.
       - Supports PostgreSQL (with URI normalization) and defaults to SQLite locally.
+      - `RATELIMIT_KEY_SECRET` is defined per class rather
+        than only here, so it tracks each class's own `SECRET_KEY` override instead
+        of binding to the base value at import time.
 
     - `DevelopmentConfig`:
       - Inherits base settings.
       - Enables debugging for local development.
+      - Uses committed literal fallbacks for `SECRET_KEY` and `WTF_CSRF_SECRET_KEY`
+        so a fresh clone runs with no `.env` present. These are development-only
+        values and must never be used on a reachable host.
 
     - `TestingConfig`:
       - Uses an in-memory SQLite database for fast, isolated tests.
       - Disables CSRF to simplify form testing.
-      - Overrides `SECRET_KEY` with a fixed value to avoid dependency on environment variables.
+      - Overrides `SECRET_KEY` and `WTF_CSRF_SECRET_KEY` with fixed values so the
+        suite runs with no external services and no `.env`.
 
     - `ProductionConfig`:
       - Disables debug and testing modes.
-      - Requires a valid `SECRET_KEY` from the environment for security.
+      - Requires `SECRET_KEY`, `WTF_CSRF_SECRET_KEY`, `ANTHROPIC_API_KEY`,
+        `RESEND_API_KEY`, `MAIL_DEFAULT_SENDER`, `SERVER_NAME` and
+        `TRUSTED_PROXY_HOPS` to be set in the environment, raising on startup if any
+        is missing.
+      - These checks are gated on `FLASK_ENV == "production"`. The class body runs on
+        every import of this module, so an ungated raise would make `config.py`
+        unimportable in development and CI without a `.env`.
 
     `config_by_name` maps environment names to their corresponding configuration
     classes, allowing dynamic selection via `FLASK_ENV`.
     """
     SECRET_KEY = os.getenv("SECRET_KEY")
-    WTF_CSRF_SECRET_KEY = os.getenv("WTF_CSRF_SECRET_KEY", SECRET_KEY)
+    WTF_CSRF_SECRET_KEY = os.getenv("WTF_CSRF_SECRET_KEY") or SECRET_KEY
 
     db_url = os.getenv("DATABASE_URL")
     if db_url and db_url.startswith("postgres://"):
@@ -125,6 +139,62 @@ class Config:
         }
     }
 
+    # ≈≈≈≈ Rate limiting (Flask-Limiter) config ≈≈≈≈
+    # Own Redis DB (/2), separate from Celery's broker (/0) and results (/1). Same
+    # env-var-per-URL convention as CELERY_BROKER_URL, so storage can move to another
+    # DB or a dedicated instance by env only — no code changes.
+    #
+    # As with the Celery block above: the numbered-DB split is organizational, not
+    # security separation. Its main benefit is limiting operational impact:
+    # for example, running FLUSHDB on the rate-limiter database cannot delete
+    # queued Celery tasks or stored task results.
+    RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/2")
+
+    # Default per-route safeguard for endpoints without an explicit rate limit.
+    # Limits are keyed by client IP, and Flask's built-in static endpoint is
+    # exempt, so page assets do not consume this budget.
+    RATELIMIT_DEFAULT = os.getenv("RATELIMIT_DEFAULT", "300 per hour")
+
+    # Include rate-limit details in response headers, including the remaining
+    # request count and when the client may retry after reaching a limit.
+    RATELIMIT_HEADERS_ENABLED = True
+
+    # Graceful degradation, matching the posture elsewhere in this app (compare the
+    # queue_message_analysis() failure path). If Redis is unreachable, the limiter
+    # falls back to per-process in-memory counters instead of raising an error, which
+    # would make the rate-limited routes unavailable.
+    #
+    # RATELIMIT_SWALLOW_ERRORS is deliberately NOT set: it would let requests through
+    # without rate limits, which is the wrong failure mode for email-sending routes.
+    RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = True
+
+    # Bound Redis connection and response waits so an unavailable rate-limit
+    # backend fails promptly instead of blocking requests until the OS-level
+    # network timeout.
+    _RATELIMIT_SOCKET_TIMEOUT = int(
+        os.getenv("RATELIMIT_SOCKET_TIMEOUT", "2")
+    )
+
+    RATELIMIT_STORAGE_OPTIONS = {
+        "socket_connect_timeout": _RATELIMIT_SOCKET_TIMEOUT,
+        "socket_timeout": _RATELIMIT_SOCKET_TIMEOUT,
+    }
+
+    # ≈≈≈≈ Reverse proxy hops (X-Forwarded-For) ≈≈≈≈
+    #   0 = no trusted proxy; use the direct connection address
+    #   1 = one trusted reverse proxy or platform router
+    #   2 = two trusted layers, such as a CDN followed by a reverse proxy
+    #
+    # ProxyFix selects the client address based on this many trusted values from
+    # the right side of X-Forwarded-For. Configure this to match the deployed
+    # proxy chain exactly. Too few may identify a shared proxy as the client;
+    # too many may trust a client-supplied value and allow IP-based limits to be
+    # bypassed.
+    #
+    # Verify the deployed platform's header behavior and ensure the application
+    # cannot be reached directly around the trusted proxies.
+    TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "0"))
+
     # ≈≈≈≈ External URL building ≈≈≈≈
     # Stage 2: Required so url_for(_external=True) works OUTSIDE a request — e.g. verification /
     # reset links built inside the Celery worker (ADR-0006). SERVER_NAME is app-wide:
@@ -141,18 +211,27 @@ class Config:
     # the live-worker integration test. False in normal operation.
     MAIL_SUPPRESS_SEND = os.getenv("MAIL_SUPPRESS_SEND", "false").strip().lower() in ("1", "true", "yes", "on")
 
+    # Used to HMAC the pending-verification address in rate-limit keys, so raw
+    # addresses never appear in Redis. Derived from SECRET_KEY rather than being its
+    # own variable — the threat model is "don't leave plaintext personal data in
+    # Redis", not "survive a full secret compromise" (extensions.py).
+    RATELIMIT_KEY_SECRET = os.getenv("RATELIMIT_KEY_SECRET") or SECRET_KEY
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
     TESTING = False
 
     SECRET_KEY = os.getenv("SECRET_KEY") or "dev-secret-key"  # SECRET_KEY fallback
+    WTF_CSRF_SECRET_KEY = os.getenv("WTF_CSRF_SECRET_KEY") or "dev-csrf-secret-key" # WTF_CSRF_SECRET_KEY fallback
     MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "onboarding@resend.dev") # MAIL_DEFAULT_SENDER fallback
 
     # Access the dev server at this host. Port 5001 (not Flask's usual 5000) because macOS
     # AirPlay Receiver squats on port 5000 and answers localhost:5000 with a 403.
     SERVER_NAME = os.getenv("SERVER_NAME", "localhost:5001")
     PREFERRED_URL_SCHEME = os.getenv("PREFERRED_URL_SCHEME", "http")
+
+    RATELIMIT_KEY_SECRET = os.getenv("RATELIMIT_KEY_SECRET") or SECRET_KEY
 
 class TestingConfig(Config):
     DEBUG = False
@@ -161,38 +240,69 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     WTF_CSRF_ENABLED = False  # disable CSRF in tests so forms submit cleanly
     SECRET_KEY = "test-secret-key"  # hardcode so tests don't need .env
+    WTF_CSRF_SECRET_KEY = "test-csrf-secret-key" # hardcode so tests don't need .env
 
     SERVER_NAME = "localhost"  # makes url_for(_external=True) deterministic in tests
     PREFERRED_URL_SCHEME = "http"
     LOAD_MODELS = False  # unit tests never need the ML/LLM stack
     MAIL_SUPPRESS_SEND = True  # unit tests never hit Resend
 
+    # Rate limiting OFF in tests: the suite must run with zero external services,
+    # and shared limit counters would make repeated requests order-dependent.
+    # The memory:// URI means a test that WANTS to exercise limiting can flip
+    # RATELIMIT_ENABLED back on per-test without needing Redis.
+    RATELIMIT_ENABLED = False
+    RATELIMIT_STORAGE_URI = "memory://"
+
+    RATELIMIT_KEY_SECRET = os.getenv("RATELIMIT_KEY_SECRET") or SECRET_KEY
+
 class ProductionConfig(Config):
     DEBUG = False
     TESTING = False
 
     SECRET_KEY = os.getenv("SECRET_KEY")
-    if not SECRET_KEY:
+    if os.getenv("FLASK_ENV") == "production" and not SECRET_KEY:
         raise ValueError("SECRET_KEY must be set in environment")
 
+    WTF_CSRF_SECRET_KEY = os.getenv("WTF_CSRF_SECRET_KEY")
+    if os.getenv("FLASK_ENV") == "production" and not WTF_CSRF_SECRET_KEY:
+        raise ValueError("WTF_CSRF_SECRET_KEY must be set in environment")
+
+    RATELIMIT_KEY_SECRET = os.getenv("RATELIMIT_KEY_SECRET") or SECRET_KEY
+
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-    if not ANTHROPIC_API_KEY:
+    if os.getenv("FLASK_ENV") == "production" and not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY must be set in environment")
 
     RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-    if not RESEND_API_KEY:
+    if os.getenv("FLASK_ENV") == "production" and not RESEND_API_KEY:
         raise ValueError("RESEND_API_KEY must be set in environment")
 
     MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER")
-    if not MAIL_DEFAULT_SENDER:
+    if os.getenv("FLASK_ENV") == "production" and not MAIL_DEFAULT_SENDER:
         raise ValueError("MAIL_DEFAULT_SENDER must be set in environment")
 
     # Required so the worker can build correct external links (ADR-0006).
     SERVER_NAME = os.getenv("SERVER_NAME")
-    if not SERVER_NAME:
+    if os.getenv("FLASK_ENV") == "production" and not SERVER_NAME:
         raise ValueError("SERVER_NAME must be set in environment (used to build external email links)")
 
-    PREFERRED_URL_SCHEME = os.getenv("PREFERRED_URL_SCHEME", "https")
+    PREFERRED_URL_SCHEME = os.getenv("PREFERRED_URL_SCHEME") or "https"
+
+    # Rate limiting keys on the client IP, so the hop count must be stated explicitly
+    # in production: silently defaulting to 0 behind a proxy puts every user in one
+    # bucket and the global limit locks out the whole site.
+    #
+    # The FLASK_ENV check is required, not redundant: this class body executes on every
+    # import of config.py — including under development/testing, where
+    # TRUSTED_PROXY_HOPS is not set — so an unconditional raise would break dev startup.
+    TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "-1"))
+    if TRUSTED_PROXY_HOPS < 0 and os.getenv("FLASK_ENV") == "production":
+        raise ValueError(
+            "TRUSTED_PROXY_HOPS must be set in environment "
+            "(0 = no proxy, 1 = one nginx / PaaS router / ALB, 2 = Cloudflare -> nginx)"
+        )
+
 
 config_by_name = {
     "development": DevelopmentConfig,

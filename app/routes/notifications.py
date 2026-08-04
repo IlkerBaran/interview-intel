@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, jsonify, abort
 from flask_login import login_required, current_user
 from sqlalchemy import func, tuple_
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import Notification
 from app.utils import verified_required
 
@@ -140,6 +140,10 @@ def index():
 @notifications_bp.route("/more", methods=["GET"])
 @login_required
 @verified_required
+# EXEMPT: driven by notifications.js, so a user working through a long list
+# fires these in bursts. Cheap and ownership-scoped — auth plus the user_id
+# WHERE clause is the real protection here, not a rate limit.
+@limiter.exempt
 def load_more_notifications():
     """
     Return the next page of notifications as a rendered HTML fragment
@@ -171,6 +175,10 @@ def load_more_notifications():
 @notifications_bp.route("/<int:notification_id>/read", methods=["POST"])
 @login_required
 @verified_required
+# EXEMPT: driven by notifications.js, so a user working through a long list
+# fires these in bursts. Cheap and ownership-scoped — auth plus the user_id
+# WHERE clause is the real protection here, not a rate limit.
+@limiter.exempt
 def mark_read(notification_id):
     """
     Mark a single notification as read (AJAX). Ownership is
@@ -202,6 +210,10 @@ def mark_read(notification_id):
 @notifications_bp.route("/read-all", methods=["POST"])
 @login_required
 @verified_required
+# EXEMPT: driven by notifications.js, so a user working through a long list
+# fires these in bursts. Cheap and ownership-scoped — auth plus the user_id
+# WHERE clause is the real protection here, not a rate limit.
+@limiter.exempt
 def mark_all_read():
     """
     Mark every unread notification for the user as read in a

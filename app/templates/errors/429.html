@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Too Many Requests — Interview Intel{% endblock %}
+
+{% block content %}
+<div style="text-align: center; padding: 80px 0;">
+    <p style="font-size: 2.5rem; margin-bottom: 12px;">⏳</p>
+    <h1 class="page-title" style="margin-bottom: 8px;">Too many requests</h1>
+    <p style="color: #746857; font-size: 0.95rem; margin-bottom: 28px; max-width: 420px; margin-left: auto;
+margin-right: auto;">
+        You've made a lot of requests in a short time, so we've paused this action
+        briefly. Please wait a moment and try again.
+        {%- if limit %}
+        <br>
+        <span style="font-size: 0.825rem; color: #a89880;">Limit: {{ limit }}.</span>
+        {%- endif %}
+    </p>
+    <a href="{{ url_for('main.home') }}"
+         style="display: inline-block; background: #1a1208; color: #f7f2e8; padding: 10px 24px; border-radius: 8px;
+  font-size: 0.875rem; font-weight: 600; text-decoration: none;">
+          Go Home
+    </a>
+</div>
+{% endblock %}

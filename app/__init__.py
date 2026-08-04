@@ -4,8 +4,9 @@ import logging
 from flask import Flask, has_request_context
 from flask_login import current_user
 from sqlalchemy import func
+from werkzeug.middleware.proxy_fix import ProxyFix
 
-from .extensions import db, migrate, login_manager, csrf
+from .extensions import db, migrate, login_manager, csrf, limiter
 from .routes import register_blueprints
 from .models import User, Message, Task, AnalysisResult, Notification, AgentRun
 from .services.ml_service import ml_service
@@ -41,6 +42,24 @@ def create_app():
     migrate.init_app(app, db)    # migrate connection to app and db
     login_manager.init_app(app)  # login_manager connection to app
     csrf.init_app(app)           # csrf_token() calls
+
+    # ≈≈≈≈ Reverse proxy — must run BEFORE the limiter sees any request ≈≈≈≈
+    # Rate limits key on the client IP, so the app has to observe the REAL client
+    # address. Behind a proxy, request.remote_addr is the proxy's own IP and every
+    # user would share a single bucket. ProxyFix rewrites remote_addr (and the
+    # scheme) from the X-Forwarded-* headers.
+    #
+    # Left off entirely when TRUSTED_PROXY_HOPS is 0 (the default) — trusting a
+    # forwarded header with no proxy in front would let any client spoof its IP.
+    # See the TRUSTED_PROXY_HOPS note in config.py for how to pick the value.
+    proxy_hops = app.config.get("TRUSTED_PROXY_HOPS", 0)
+    if proxy_hops > 0:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=proxy_hops, x_proto=proxy_hops)
+        logger.info("ProxyFix enabled for %s forwarded hop(s)", proxy_hops)
+
+    # Initialized AFTER login_manager so the per-user key funcs in extensions.py can
+    # resolve current_user.
+    limiter.init_app(app)
 
     # ≈≈≈≈ Celery / Redis wiring ≈≈≈≈
     celery_init_app(app)        # Configure Celery with this Flask app and app context.

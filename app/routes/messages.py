@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 
 from app.forms.message_forms import MessageSubmissionForm, MessageNoteForm
-from app.extensions import db
+from app.extensions import db, limiter, user_key
 from app.models import Message, MessageStatus
 from app.services.workflow_service import (
     save_message_for_analysis,
@@ -59,6 +59,12 @@ def index():
 @messages_bp.route("/new", methods=["GET", "POST"])
 @login_required
 @verified_required
+# Prevent expensive bursts of analysis requests. Each submission can trigger
+# 6 paid LLM calls and may be retried up to 3 times. Limit each user to
+# 10 POST submissions per hour and 30 per day. A separate lifetime quota
+# controls the user's total usage and overall cost.
+@limiter.limit("10 per hour", key_func=user_key, methods=["POST"])
+@limiter.limit("30 per day", key_func=user_key, methods=["POST"])
 def new_message():
     """
     Display a message submission form and process a new message submission for the logged-in user.
@@ -115,6 +121,11 @@ def show_message(message_id):
 @messages_bp.route("/<int:message_id>/status", methods=["GET"])
 @login_required
 @verified_required
+# EXEMPT: the analysis page polls this every 3s for up to ~5 minutes (POLL_MS in
+# show_message.html), which is ~20 req/min per open tab. Any default limit here
+# would break the async UX. Safe to exempt: one ownership-scoped SELECT, no
+# writes, no template render, no external calls.
+@limiter.exempt
 def message_status(message_id):
     """
     Cheap JSON status for the async poller: one ownership-scoped DB lookup, no
