@@ -33,6 +33,7 @@ See [ADR-0001](0001-record-architecture-decisions.md) for why this practice exis
 | [0010](0010-analysis-on-dedicated-ml-queue-sequential-enrichment.md)      | Analysis on a Dedicated ML Queue, Enrichment Sequential | Accepted |
 | [0011](0011-analysis-task-reliability-and-terminal-state.md)              | Analysis Task Reliability and Terminal State    | Accepted |
 | [0012](0012-Rate-Limiting-IP-Keying-Fail-Open-Storage-and-Proxy-Trust.md) | Rate Limiting: IP Keying, Fail-Open Storage, and Proxy Trust    | Accepted |
+| [0013](0013-per-user-lifetime-analysis-quota.md)                          | Per-User Lifetime Analysis Quota                | Accepted |
 
 ## Adding a new ADR
 
