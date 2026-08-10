@@ -25,6 +25,11 @@ from app.services.ml_service import ml_service
 from app.services.llm_service import llm_service, TRANSIENT_LLM_ERRORS
 from app.services.preprocess_language import normalize_text
 
+# Safe at module level: quota_service imports only extensions + models, so there is
+# no workflow_service <-> quota_service cycle (unlike celery_tasks, which must stay
+# function-local).
+from app.services.quota_service import refund_nothing_to_show
+
 
 logger = logging.getLogger(__name__)
 
@@ -159,22 +164,6 @@ NOTIFICATION_MAP = {
         "Offer detected"
     )
 }
-
-
-def save_message_for_analysis(
-        user_id: int,
-        raw_text: str,
-        subject: Optional[str] = None,
-        sender_email: Optional[str] = None,
-) -> Message:
-    """
-    Route side (Stage 3): save the raw message as PENDING and return immediately.
-    The heavy ML/LLM pipeline runs later in the Celery task. Raises on empty input
-    or DB failure so the route can flash/redirect.
-    """
-    if not raw_text or not raw_text.strip():
-        raise ValueError("raw_text cannot be empty")
-    return _save_message(user_id, raw_text, subject, sender_email)
 
 
 def queue_message_analysis(message_id: int) -> bool:
@@ -400,43 +389,6 @@ def run_message_analysis(message: Message) -> None:
 
 
 # ≈≈≈≈ Private Helpers ≈≈≈≈
-
-def _save_message(
-    user_id: int,
-    raw_text: str,
-    subject: Optional[str],
-    sender_email: Optional[str],
-) -> Message:
-    """Save raw message to DB. Raises on failure."""
-    try:
-        message = Message(
-            user_id=user_id,
-            raw_text=raw_text,
-            subject=subject,
-            sender_email=sender_email,
-            status=MessageStatus.PENDING,
-        )
-        db.session.add(message)
-        db.session.commit()
-        logger.info(
-            "Message %s saved",
-            message.id,
-            extra={"message_id": message.id}
-        )
-        return message
-
-    except Exception as e:
-        db.session.rollback()
-        logger.error(
-            "Failed to save message — %s",
-            type(e).__name__,
-            extra={
-                "user_id": user_id,
-                "error_type": type(e).__name__
-            }
-        )
-        raise
-
 
 def _save_pipeline_results(
         message: Message,
@@ -1003,7 +955,16 @@ def _mark_failed_nothing_to_show(message: Message, detected_lang: str) -> None:
 
     Writes an AgentRun audit row (status FAILED) and sets the message FAILED in one
     commit. Raises on DB failure — the task's outer handler marks the message FAILED.
+
+    Refunds the analysis slot, but UNLIKE the other five FAILED paths this one is
+    CAPPED. It still costs one billed extraction call, so an uncapped refund would
+    let someone loop on garbage input and reset their quota forever. The first
+    NOTHING_TO_SHOW_REFUND_CAP nothing-to-show results per user refund; after that
+    the slot is consumed. The terminal FAILED state is unaffected either way — the
+    cap only decides whether the slot comes back.
     """
+    message_id = message.id  # capture before commit expires the instance
+
     try:
         db.session.add(AgentRun(
             message_id=message.id,
@@ -1015,11 +976,22 @@ def _mark_failed_nothing_to_show(message: Message, detected_lang: str) -> None:
         message.status = MessageStatus.FAILED
         db.session.commit()
     except Exception:
+        # Re-raised: analyze_message's generic handler then marks FAILED and calls
+        # the UNCAPPED refund_analysis(). That is deliberate — a failure to commit
+        # is a database problem, not a nothing-to-show result, so it is treated as
+        # path D. The per-message marker keeps it safe either way.
         db.session.rollback()
         raise
 
+    # After the commit: the refund helper opens with a rollback, which would discard
+    # the FAILED write above if it ran first.
+    refunded = refund_nothing_to_show(message_id)
+
     logger.warning(
-        "Pipeline produced nothing to show for message %s — marked FAILED",
-        message.id,
-        extra={"message_id": message.id},
+        "Pipeline produced nothing to show for message %s — marked FAILED (refunded=%s)",
+        message_id, refunded,
+        extra={
+            "message_id": message_id,
+            "refunded": refunded
+        }
     )

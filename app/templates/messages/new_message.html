@@ -185,11 +185,39 @@
 
 {% block content %}
 
+    {#- analyses_remaining is None for anonymous/unverified users and when the quota
+        lookup degraded (see inject_analysis_quota). Treat that as "not at limit" so a
+        degraded read never blocks submission — the real gate is the conditional
+        UPDATE in quota_service.consume_and_create_message(). #}
+    {%- set at_limit = analyses_remaining is not none and analyses_remaining <= 0 %}
+
     <div class="page-header">
         <h1 class="page-title">Analyze an Email</h1>
         <p class="page-subtitle">Paste any interview-related email and we'll extract the details, classify urgency, and generate preparation guidance.</p>
+        {%- if analyses_remaining is not none %}
+        <p class="page-subtitle" style="margin-top:6px; font-weight:600;">
+            {{ analyses_remaining }} of {{ analyses_allowance }} analyses remaining.
+        </p>
+        {%- endif %}
     </div>
 
+    {% if at_limit %}
+    <div class="form-card">
+        <p style="font-size: 2rem; margin-bottom: 12px;">⏳</p>
+        <h2 class="page-title" style="font-size: 1.25rem; margin-bottom: 8px;">
+            You've used all {{ analyses_allowance }} of your analyses
+        </h2>
+        <p class="page-subtitle" style="margin-bottom: 20px;">
+            This is a lifetime limit, so there's nothing to wait for. Analyses that
+            don't produce a result are refunded automatically — if one of yours failed,
+            the slot has already come back.
+        </p>
+        <a href="{{ url_for('messages.index') }}" class="btn-submit"
+           style="display: inline-block; text-decoration: none;">
+            View your analyses
+        </a>
+    </div>
+    {% else %}
     <div class="form-card">
         <form method="POST" action="{{ url_for('messages.new_message') }}" novalidate>
             {{ form.hidden_tag() }}
@@ -257,6 +285,7 @@
 
         </form>
     </div>
+    {% endif %}
 
     <!-- What happens next -->
     <div class="info-box">
@@ -274,6 +303,10 @@
 
 
 {% block extra_scripts %}
+{#- The form is not rendered at the limit, so raw_text / submit-btn do not exist and
+    this would throw on textarea.value. Same condition as `at_limit` above; recomputed
+    because a {% set %} in one block is not visible in another. #}
+{%- if analyses_remaining is none or analyses_remaining > 0 %}
 <script>
     const textarea  = document.getElementById("raw_text");
     const counter   = document.getElementById("char-count");
@@ -306,4 +339,5 @@
         submitBtn.textContent = "Analyzing...";
     });
 </script>
+{%- endif %}
 {% endblock %}

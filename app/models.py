@@ -123,6 +123,20 @@ class User(UserMixin, db.Model):
     password_reset_token = db.Column(db.String(100), nullable=True, index=True, unique=True)
     password_reset_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    # ≈≈≈≈ Lifetime analysis quota ≈≈≈≈
+    # Store analyses used, not remaining. A remaining-count column would require
+    # server_default='3', hard-coding the quota in the schema. Changing
+    # ANALYSIS_LIFETIME_QUOTA could then leave the config and database default out of sync.
+    #
+    # Remaining quota is calculated by quota_service.get_remaining().
+    # server_default='0' also backfills existing users during migration without a data step.
+    analyses_used = db.Column(db.Integer, nullable=False, server_default="0", default=0)
+
+    # Tracks refund eligibility, not analysis usage, so it remains separate from
+    # analyses_used. It counts only granted "nothing to show" refunds, allowing
+    # that failure path to be capped by NOTHING_TO_SHOW_REFUND_CAP. The other five
+    # FAILED paths continue to refund without a cap.
+    nothing_to_show_refunds_used = db.Column(db.Integer, nullable=False, server_default="0", default=0)
 
     # Prevents direct access to the password attribute.
     @property
@@ -251,6 +265,13 @@ class Message(db.Model):
     raw_text = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(30), nullable=False, index=True, default=MessageStatus.PENDING)
     note = db.Column(db.Text, nullable=True)
+
+    # Prevent the same message from receiving more than one quota refund.
+    # With acks_late=True, a task may be redelivered after a worker crash and run
+    # its failure handler again. refund_analysis() conditionally changes this
+    # marker from False to True; only rowcount == 1 permits the quota decrement.
+    quota_refunded = db.Column(db.Boolean, nullable=False, server_default=db.false(), default=False)
+
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
     updated_at = db.Column(
         db.DateTime(timezone=True),

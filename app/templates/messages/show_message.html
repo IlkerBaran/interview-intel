@@ -370,6 +370,16 @@
     {% elif message.status == "failed" %}
         <div class="processing-banner" style="background:#fef2f2; border-color:#fecaca; color:#991b1b;">
             ⚠️ Analysis failed for this email. The raw email is still saved below.
+            {#- Driven by the marker the refund helpers set, so this reports what actually
+                happened rather than what usually happens. Without the refunded line a
+                counter going 3 → 2 → 3 reads as a bug; without the other line a capped
+                nothing-to-show result would quietly keep the slot. #}
+            <br>
+            {%- if message.quota_refunded %}
+            <span style="font-weight:600;">This didn't use one of your analyses.</span>
+            {%- else %}
+            <span style="font-weight:600;">This didn't produce a result and used one of your analyses.</span>
+            {%- endif %}
         </div>
     {% endif %}
 

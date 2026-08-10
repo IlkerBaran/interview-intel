@@ -16,6 +16,22 @@ from config import config_by_name
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_rollback():
+    """
+    Clear a failed transaction so the rest of a render can still query.
+
+    Called from the context processors below after a DB fault: SQLAlchemy leaves
+    the session in a failed state, and without this every later query in the same
+    render fails too. Swallows its own errors — if the connection is gone there is
+    nothing left to do, and raising here would defeat the whole point.
+    """
+    try:
+        db.session.rollback()
+    except Exception:
+        logger.exception("context processor: session rollback failed")
+
+
 def create_app():
     """
     Application factory function.
@@ -118,15 +134,67 @@ def create_app():
         if not has_request_context():
             return {"unread_count": 0}
 
-        if not current_user.is_authenticated or not current_user.is_verified:
+        # Everything below can touch the database — including the guards, because
+        # reading current_user runs the user_loader. A context processor that raises
+        # takes down EVERY render, errors/500.html included, turning a handled 500
+        # into an unhandled one. Degrade to the anonymous value instead; the badge
+        # disappearing is a far better outcome than a dead error page.
+        try:
+            if not current_user.is_authenticated or not current_user.is_verified:
+                return {"unread_count": 0}
+
+            count = db.session.scalar(
+                db.select(func.count(Notification.id))
+                .where(Notification.user_id == current_user.id)
+                .where(Notification.is_read.is_(False))
+            )
+            return {"unread_count": count or 0}
+        except Exception:
+            logger.exception("unread notification count unavailable — rendering without it")
+            _safe_rollback()
             return {"unread_count": 0}
 
-        count = db.session.scalar(
-            db.select(func.count(Notification.id))
-            .where(Notification.user_id == current_user.id)
-            .where(Notification.is_read.is_(False))
-        )
-        return {"unread_count": count or 0}
+
+    @app.context_processor
+    def inject_analysis_quota():
+        """
+        Expose the LIFETIME analysis quota to every template.
+
+        analyses_remaining is derived (allowance - used) and clamped to
+        [0, allowance] in quota_service.get_remaining(), so it can never render
+        above the allowance even if a refund landed on a pre-quota message, nor
+        below zero if the allowance is later lowered. An in-flight analysis has
+        already consumed its slot, so the decremented number shows for the whole
+        run and only returns if the analysis failed.
+
+        Guarded exactly like the notification processor above: templates also
+        render inside Celery workers where there is no request context, and a DB
+        fault degrades to None rather than propagating out of the render.
+
+        Returning None (not 0) for anonymous, unverified and degraded cases is what
+        lets the templates write `{% if analyses_remaining is not none %}` and show
+        nothing at all, rather than claiming the user has 0 analyses left.
+        """
+        if not has_request_context():
+            return {"analyses_remaining": None, "analyses_allowance": None}
+
+        # As above: the guards themselves can hit the database via the user_loader,
+        # so they sit inside the try. A raise here would break every page render,
+        # including the error templates.
+        try:
+            if not current_user.is_authenticated or not current_user.is_verified:
+                return {"analyses_remaining": None, "analyses_allowance": None}
+
+            from .services.quota_service import get_allowance, get_remaining
+            return {
+                "analyses_remaining": get_remaining(current_user.id),
+                "analyses_allowance": get_allowance()
+            }
+        except Exception:
+            logger.exception("analysis quota unavailable — rendering without it")
+            _safe_rollback()
+            return {"analyses_remaining": None, "analyses_allowance": None}
+
 
     # ≈≈≈≈ load ML + LLM once at startup — unless this process doesn't need them ≈≈≈≈
     # Email-only Celery workers run with LOAD_MODELS=0 so they don't carry the model

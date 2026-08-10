@@ -7,9 +7,13 @@ from app.forms.message_forms import MessageSubmissionForm, MessageNoteForm
 from app.extensions import db, limiter, user_key
 from app.models import Message, MessageStatus
 from app.services.workflow_service import (
-    save_message_for_analysis,
     queue_message_analysis,
     mark_analysis_failed,
+)
+from app.services.quota_service import (
+    consume_and_create_message,
+    refund_analysis,
+    get_allowance,
 )
 from app.utils import verified_required
 
@@ -76,17 +80,31 @@ def new_message():
         # ML/LLM pipeline runs in the Celery task. The show_message page then polls
         # for status and reloads when the analysis finishes.
         try:
-            message = save_message_for_analysis(
+            # Consume one lifetime analysis and INSERT the message in a single
+            # transaction (quota_service). Returns None — no message written —
+            # when the conditional UPDATE found no slot left. The gate is that
+            # UPDATE's rowcount, not a prior read, so two concurrent submissions
+            # cannot both take the last slot.
+            message = consume_and_create_message(
                 user_id=current_user.id,
                 raw_text=form.raw_text.data,
                 subject=form.subject.data or None,
                 sender_email=form.sender_email.data or None
             )
+            if message is None:
+                flash(
+                    f"You've used all {get_allowance()} of your analyses. "
+                    "Analyses that don't produce a result are refunded automatically.",
+                    "warning",
+                )
+                return render_template("messages/new_message.html", form=form)
         except Exception as e:
             logger.error(
                 "Error saving message submission error_type=%s",
                 type(e).__name__,
-                extra={"error_type": type(e).__name__}
+                extra={
+                    "error_type": type(e).__name__
+                }
             )
             flash("Something went wrong while saving the message", "danger")
             return render_template("messages/new_message.html", form=form)
@@ -96,7 +114,17 @@ def new_message():
         # failure instead of an eternal "Analyzing…" spinner.
         if not queue_message_analysis(message.id):
             mark_analysis_failed(message.id)
-            flash("We couldn't start the analysis right now. Please try again in a moment.", "danger")
+            # The broker is unreachable, so no result will ever arrive — return the
+            # slot, same as every other FAILED path. Marking first then refunding
+            # settles the terminal state before the compensating action; the order
+            # is a readability choice, not a correctness requirement, since
+            # refund_analysis() commits on its own.
+            refund_analysis(message.id)
+            flash(
+                "We couldn't start the analysis right now. Please try again in a moment. "
+                "This didn't use one of your analyses.",
+                "danger",
+            )
             return redirect(url_for("messages.show_message", message_id=message.id))
 
         flash("Analysis started — results will appear shortly.", "success")

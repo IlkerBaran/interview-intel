@@ -431,6 +431,15 @@ def analyze_message(self, message_id: int) -> None:
         run_message_analysis, analysis_already_done, mark_analysis_failed,
     )
 
+    # Quota refund:
+    # Every FAILED analysis returns its quota slot, so no extra decision is needed here.
+    # refund_analysis() is idempotent and never raises, making repeated calls safe.
+    #
+    # Called after mark_analysis_failed() so the message reaches FAILED before quota
+    # cleanup. Each helper commits separately, so the order is mainly for clarity.
+    from app.services.quota_service import refund_analysis
+
+
     # Pass IDs through Celery, then re-fetch ORM objects inside the worker.
     # This avoids sending database objects through Redis.
     message = db.session.get(Message, message_id)
@@ -470,6 +479,7 @@ def analyze_message(self, message_id: int) -> None:
             extra={"message_id": message_id},
         )
         mark_analysis_failed(message_id)
+        refund_analysis(message_id)  # no result delivered — return the slot
         return
 
     except TRANSIENT_LLM_ERRORS as exc:
@@ -486,6 +496,7 @@ def analyze_message(self, message_id: int) -> None:
                 },
             )
             mark_analysis_failed(message_id)
+            refund_analysis(message_id)  # no result delivered — return the slot
             return
         countdown = _analysis_retry_countdown(self.request.retries)   # ~15s / ~30s / ~60s
         logger.warning(
@@ -509,6 +520,12 @@ def analyze_message(self, message_id: int) -> None:
             },
         )
         mark_analysis_failed(message_id)
+        # NOTE: this branch is broad. It catches DB/commit failures but ALSO an
+        # exception raised after the 6 LLM calls already succeeded — e.g.
+        # _save_pipeline_results() failing to commit. That case refunds a slot whose
+        # spend was already incurred; accepted deliberately, because the user got no
+        # result and the rule stays "no result, no slot".
+        refund_analysis(message_id)
         return
 
 
@@ -524,9 +541,23 @@ def sweep_stuck_analyses() -> int:
     staleness, so a task that just flipped to COMPLETED is never clobbered. DB-only →
     default queue (served by the LOAD_MODELS=0 email worker). Returns the count reaped.
     """
+    from app.services.quota_service import refund_analysis
+
+
     cutoff = datetime.now(UTC) - timedelta(seconds=_ANALYSIS_STUCK_AFTER_SECONDS)
 
     try:
+        # Capture the ids the sweep is about to reap so their quota can be refunded.
+        # Read BEFORE the UPDATE because the UPDATE's own WHERE stops matching once
+        # the rows are FAILED. The atomic UPDATE below is unchanged — this is a
+        # separate read, not a select-then-update gate.
+        candidate_ids = list(db.session.execute(
+            db.select(Message.id).where(
+                Message.status.in_([MessageStatus.PENDING, MessageStatus.PROCESSING]),
+                Message.updated_at < cutoff
+            )
+        ).scalars().all())
+
         result = db.session.execute(
             db.update(Message)
             .where(
@@ -554,4 +585,23 @@ def sweep_stuck_analyses() -> int:
                 "stuck_after_seconds": _ANALYSIS_STUCK_AFTER_SECONDS
             },
         )
+
+    # A reaped message died to infrastructure (SIGKILL, OOM, no worker), so the slot
+    # goes back. Re-check status per id rather than trusting the pre-UPDATE snapshot:
+    # a candidate that completed in between was never reaped and must not be refunded.
+    # refund_analysis() never raises and is idempotent, so this cannot stop the sweep
+    # returning or leave a message off its terminal state.
+    refunded = 0
+    for message_id in candidate_ids:
+        status = db.session.scalar(db.select(Message.status).where(Message.id == message_id))
+        if status == MessageStatus.FAILED and refund_analysis(message_id):
+            refunded += 1
+    if refunded:
+        logger.info(
+            "sweep_stuck_analyses: refunded quota for %d reaped message(s)", refunded,
+            extra={
+                "refunded": refunded
+            }
+        )
+
     return count

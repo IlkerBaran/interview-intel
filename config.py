@@ -211,6 +211,22 @@ class Config:
     # the live-worker integration test. False in normal operation.
     MAIL_SUPPRESS_SEND = os.getenv("MAIL_SUPPRESS_SEND", "false").strip().lower() in ("1", "true", "yes", "on")
 
+    # ≈≈≈≈ Lifetime analysis quota ≈≈≈≈
+    # Maximum number of analyses a user can run. Each submission can trigger 6 paid
+    # LLM calls, so this is the hard cost ceiling per account — the per-hour/day
+    # rate limits on messages.new_message shape the BURST, this caps the TOTAL.
+    #
+    # Config-owned on purpose: Store how many analyses each user has used, not how many remain.
+    # This allows to change the quota here without updating database records
+    # or creating a migration.
+    ANALYSIS_LIFETIME_QUOTA = int(os.getenv("ANALYSIS_LIFETIME_QUOTA", "3"))
+
+    # Maximum number of refunds allowed for "nothing to show" results.
+    # This path still makes one paid LLM call, so unlimited refunds could let
+    # users repeatedly submit unusable input without consuming their quota.
+    # Every other FAILED path refunds unconditionally.
+    NOTHING_TO_SHOW_REFUND_CAP = int(os.getenv("NOTHING_TO_SHOW_REFUND_CAP", "2"))
+
     # Used to HMAC the pending-verification address in rate-limit keys, so raw
     # addresses never appear in Redis. Derived from SECRET_KEY rather than being its
     # own variable — the threat model is "don't leave plaintext personal data in
@@ -224,7 +240,7 @@ class DevelopmentConfig(Config):
 
     SECRET_KEY = os.getenv("SECRET_KEY") or "dev-secret-key"  # SECRET_KEY fallback
     WTF_CSRF_SECRET_KEY = os.getenv("WTF_CSRF_SECRET_KEY") or "dev-csrf-secret-key" # WTF_CSRF_SECRET_KEY fallback
-    MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "onboarding@resend.dev") # MAIL_DEFAULT_SENDER fallback
+    MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER") or "onboarding@resend.dev" # MAIL_DEFAULT_SENDER fallback
 
     # Access the dev server at this host. Port 5001 (not Flask's usual 5000) because macOS
     # AirPlay Receiver squats on port 5000 and answers localhost:5000 with a 403.
