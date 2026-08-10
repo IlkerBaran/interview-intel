@@ -19,19 +19,20 @@ See [ADR-0001](0001-record-architecture-decisions.md) for why this practice exis
 
 ## Index
 
-| ADR                                                             | Decision                                        | Status   |
-|-----------------------------------------------------------------|-------------------------------------------------| -------- |
-| [0001](0001-record-architecture-decisions.md)                   | Record Architecture Decisions                   | Accepted |
-| [0002](0002-use-celery-and-redis-for-background-jobs.md)        | Use Celery and Redis for Background Jobs        | Accepted |
-| [0003](0003-use-json-serializer-not-pickle.md)                  | Use JSON Serializer, Not Pickle                 | Accepted |
-| [0004](0004-separate-redis-databases-for-broker-and-results.md) | Separate Redis Databases for Broker and Results | Accepted |
-| [0005](0005-verify-session-teardown-with-a-live-worker-test.md) | Verify Session Teardown With a Live-Worker Test | Accepted |
-| [0006](0006-build-token-bearing-emails-in-the-worker.md)        | Build Token-Bearing Emails in the Worker        | Accepted |
-| [0007](0007-at-least-once-email-delivery.md)                    | At-Least-Once Email Delivery, Latest-Token-Wins | Accepted |
-| [0008](0008-gate-eager-ml-loading-behind-load-models.md)        | Gate Eager ML/LLM Loading Behind LOAD_MODELS    | Accepted |
-| [0009](0009-asynchronous-analysis-ux-via-status-polling.md)     | Asynchronous Analysis UX via Status Polling     | Accepted |
-| [0010](0010-analysis-on-dedicated-ml-queue-sequential-enrichment.md) | Analysis on a Dedicated ML Queue, Enrichment Sequential | Accepted |
-| [0011](0011-analysis-task-reliability-and-terminal-state.md)    | Analysis Task Reliability and Terminal State    | Accepted |
+| ADR                                                                       | Decision                                        | Status   |
+|---------------------------------------------------------------------------|-------------------------------------------------| -------- |
+| [0001](0001-record-architecture-decisions.md)                             | Record Architecture Decisions                   | Accepted |
+| [0002](0002-use-celery-and-redis-for-background-jobs.md)                  | Use Celery and Redis for Background Jobs        | Accepted |
+| [0003](0003-use-json-serializer-not-pickle.md)                            | Use JSON Serializer, Not Pickle                 | Accepted |
+| [0004](0004-separate-redis-databases-for-broker-and-results.md)           | Separate Redis Databases for Broker and Results | Accepted |
+| [0005](0005-verify-session-teardown-with-a-live-worker-test.md)           | Verify Session Teardown With a Live-Worker Test | Accepted |
+| [0006](0006-build-token-bearing-emails-in-the-worker.md)                  | Build Token-Bearing Emails in the Worker        | Accepted |
+| [0007](0007-at-least-once-email-delivery.md)                              | At-Least-Once Email Delivery, Latest-Token-Wins | Accepted |
+| [0008](0008-gate-eager-ml-loading-behind-load-models.md)                  | Gate Eager ML/LLM Loading Behind LOAD_MODELS    | Accepted |
+| [0009](0009-asynchronous-analysis-ux-via-status-polling.md)               | Asynchronous Analysis UX via Status Polling     | Accepted |
+| [0010](0010-analysis-on-dedicated-ml-queue-sequential-enrichment.md)      | Analysis on a Dedicated ML Queue, Enrichment Sequential | Accepted |
+| [0011](0011-analysis-task-reliability-and-terminal-state.md)              | Analysis Task Reliability and Terminal State    | Accepted |
+| [0012](0012-Rate-Limiting-IP-Keying-Fail-Open-Storage-and-Proxy-Trust.md) | Rate Limiting: IP Keying, Fail-Open Storage, and Proxy Trust    | Accepted |
 
 ## Adding a new ADR
 
