@@ -6,6 +6,9 @@ venv/
 .env
 .env.*
 
+# Keep the example of environment variables
+!.env.example
+
 # Instance folder (runtime files like SQLite DB)
 instance/
 
