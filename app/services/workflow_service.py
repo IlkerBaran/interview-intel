@@ -148,21 +148,21 @@ STATUS_RANK = {
 APPLICATION_FETCH_LIMIT = 50
 
 # ≈≈≈≈ notification rules ≈≈≈≈
-# maps application status → (notification_type, template, fallback)
-# only INTERVIEWING and OFFERED fire notifications
-# REJECTED, TASK_DUE, APPLICATION_UPDATED are separate future features
+# maps EMAIL CATEGORY → (notification_type, headline)
+#
+# Keyed on the detected category, not on an application status change. The
+# notifications empty state promises a notification whenever an interview
+# invitation or an offer is detected, and analysis never creates applications —
+# so gating on a successful link made that promise false for every company the
+# user had not already entered by hand, and gating on status_updated silenced
+# every interview email after the first for an application already INTERVIEWING.
+#
+# rejection is deliberately absent: the empty state promises interviews and
+# offers only. STATUS_MAP still maps it for the application-status update.
+# TASK_DUE and APPLICATION_UPDATED are separate future features.
 NOTIFICATION_MAP = {
-    ApplicationStatus.INTERVIEWING: (
-        NotificationType.INTERVIEW_DETECTED,
-        "Interview detected for {company} — {role}",
-        "Interview invitation detected"
-    ),
-
-    ApplicationStatus.OFFERED: (
-        NotificationType.OFFER_DETECTED,
-        "Offer detected for {company} — {role}",
-        "Offer detected"
-    )
+    "interview_invitation": (NotificationType.INTERVIEW_DETECTED, "Interview invitation detected"),
+    "offer":                (NotificationType.OFFER_DETECTED,     "Offer detected")
 }
 
 
@@ -486,7 +486,13 @@ def _save_pipeline_results(
         db.session.add(agent_run)
 
         # ≈≈≈≈ notification (SAME transaction — atomic writes) ≈≈≈≈
-        _stage_notification(link_result, user_id)
+        _stage_notification(
+            message_id=message.id,
+            category=final_category,
+            link_result=link_result,
+            details=details,
+            user_id=user_id
+        )
 
         # ≈≈≈≈ message status ≈≈≈≈
         message.status = MessageStatus.COMPLETED
@@ -912,37 +918,83 @@ def _auto_update_status(
 
     return False, "same_rank"
 
-def _stage_notification(link_result: AutoLinkResult, user_id: int) -> None:
+
+def _notification_descriptor(link_result: AutoLinkResult, details: dict) -> str:
     """
-    Stage an in-app notification onto the session (NO commit) so it is written in the
-    SAME transaction as AnalysisResult/Tasks/AgentRun (atomic writes). Only fires for
-    a successful, status-changing auto-link. Uses app.company/app.role — user-entered
-    values, never LLM text. Falls back to a generic message if either is missing.
+    Build the "Company — Role" suffix, preferring user-entered values.
+
+    Two sources, in trust order:
+      1. the linked JobApplication's company/role — typed by the user;
+      2. the LLM's extracted company_name/role_title — model output.
+
+    (2) is why the notification records message_id: an extracted claim has to be
+    checkable by opening the email it came from. Returns "" when neither source
+    names anything, and the caller falls back to the bare headline.
+    """
+    application = link_result.application if link_result.linked else None
+
+    if application:
+        company, role = application.company, application.role
+    else:
+        company, role = details.get("company_name"), details.get("role_title")
+
+    parts = [p.strip() for p in (company, role) if p and p.strip()]
+    return " — ".join(parts)
+
+
+def _stage_notification(
+        message_id: int,
+        category: Optional[str],
+        link_result: AutoLinkResult,
+        details: dict,
+        user_id: int,
+) -> None:
+    """
+    Stage an in-app notification onto the session (NO commit) so it is written in
+    the SAME transaction as AnalysisResult/Tasks/AgentRun (atomic writes).
+
+    Fires on the detected email category, regardless of whether the message linked to a
+    tracked application — see NOTIFICATION_MAP for why.
+
+    Trust: prefers the linked application's user-entered company/role and falls
+    back to LLM-extracted values. That is a deliberate relaxation of the previous
+    "never LLM text" rule, paid for by recording message_id so the claim can be
+    verified against the source email. Rendered text is Jinja-autoescaped.
+
+    Deduplicated on (message_id, notification_type) with a SELECT rather than a
+    unique constraint: this row is staged into the pipeline's single transaction,
+    where an IntegrityError would roll back the entire analysis and mark the
+    message FAILED. first() rather than scalar_one_or_none() for the same reason —
+    nothing at the database level stops duplicates predating this guard, and the
+    probe must not raise on them.
+
     Truncates to Notification.message = String(300).
     """
-    if not (link_result.linked and link_result.status_updated and link_result.application):
-        return
-
-    application = link_result.application
-    mapping = NOTIFICATION_MAP.get(application.status)
+    mapping = NOTIFICATION_MAP.get(category)
     if not mapping:
         return
 
-    notification_type, template, fallback = mapping
+    notification_type, headline = mapping
 
-    if application.company and application.role:
-        message_text = template.format(
-            company=application.company,
-            role=application.role
+    already = db.session.execute(
+        db.select(Notification.id).where(
+            Notification.message_id == message_id,
+            Notification.notification_type == notification_type
         )
-    else:
-        message_text = fallback
+        .limit(1)
+    ).scalars().first()
+
+    if already is not None: return
+
+    descriptor = _notification_descriptor(link_result, details)
+    message_text = f"{headline} — {descriptor}" if descriptor else headline
 
     if len(message_text) > 300:
         message_text = message_text[:297] + "..."
 
     db.session.add(Notification(
         user_id=user_id,
+        message_id=message_id,
         message=message_text,
         notification_type=notification_type,
         is_read=False

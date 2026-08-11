@@ -1,38 +1,79 @@
 {# Notification rows. Shared by notifications/index.html and the
    notifications.load_more_notifications endpoint so card markup
-   lives in exactly one place. <time datetime> is an absolute ISO
-   value in UTC — the utc_iso filter's trailing Z is required, or
-   new Date() in notifications.js parses it as LOCAL and every
-   recent item collapses to "just now". notifications.js rewrites
-   the text to a relative label on load, falling back to the
-   localtime.js absolute for items past the relative window. The
-   inner text is a labelled UTC fallback for JS-disabled clients. #}
-{% for n in notifications %}
-    <button type="button"
-            class="notif-card {{ 'unread' if not n.is_read else 'read' }}"
-            data-id="{{ n.id }}"
-            data-url="{{ url_for('notifications.mark_read', notification_id=n.id) }}">
-        <span class="notif-dot" aria-hidden="true"></span>
-        <span class="notif-body">
-            <span class="notif-message">{{ n.message }}</span>
-            <span class="notif-meta">
-                {% if n.notification_type == 'interview_detected' %}
-                    <span class="badge badge-blue">Interview</span>
-                {% elif n.notification_type == 'offer_detected' %}
-                    <span class="badge badge-green">Offer</span>
-                {% elif n.notification_type == 'task_due' %}
-                    <span class="badge badge-orange">Task Due</span>
-                {% elif n.notification_type == 'application_updated' %}
-                    <span class="badge badge-gray">Application</span>
-                {% else %}
-                    <span class="badge badge-gray">{{ n.notification_type | replace('_', ' ') | title }}</span>
-                {% endif %}
-                <time class="notif-time"
-                      data-localtime="datetime_short"
-                      datetime="{{ n.created_at | utc_iso }}">
-                    {{ n.created_at.strftime('%b %d, %Y %H:%M') }} UTC
-                </time>
-            </span>
+   lives in exactly one place.
+
+   The time element's datetime value is an absolute UTC ISO timestamp.
+   The utc_iso filter's trailing Z is required; without it,
+   notifications.js parses the value as local time and recent items
+   can incorrectly collapse to "just now". notifications.js replaces
+   the fallback text with a relative label on load, while localtime.js
+   provides an absolute local time outside the relative-time window.
+   The original text remains a labelled UTC fallback when JavaScript
+   is unavailable.
+
+   Notifications with a message_id use a link so extracted company
+   or role information can be checked against the source email.
+   Older notifications without a message_id, and future types with
+   no associated message such as TASK_DUE, use a non-navigating card.
+#}
+
+{% macro notification_content(n) %}
+    <span class="notif-dot" aria-hidden="true"></span>
+
+    <span class="notif-body">
+        <span class="notif-message">{{ n.message }}</span>
+
+        <span class="notif-meta">
+            {% if n.notification_type == 'interview_detected' %}
+                <span class="badge badge-blue">Interview</span>
+            {% elif n.notification_type == 'offer_detected' %}
+                <span class="badge badge-green">Offer</span>
+            {% elif n.notification_type == 'task_due' %}
+                <span class="badge badge-orange">Task Due</span>
+            {% elif n.notification_type == 'application_updated' %}
+                <span class="badge badge-gray">Application</span>
+            {% else %}
+                <span class="badge badge-gray">
+                    {{ n.notification_type | replace('_', ' ') | title }}
+                </span>
+            {% endif %}
+
+            <time class="notif-time"
+                  data-localtime="datetime_short"
+                  datetime="{{ n.created_at | utc_iso }}">
+                {{ n.created_at.strftime('%b %d, %Y %H:%M') }} UTC
+            </time>
         </span>
-    </button>
+    </span>
+{% endmacro %}
+
+
+{% for n in notifications %}
+    {% set target = url_for(
+        'messages.show_message',
+        message_id=n.message_id
+    ) if n.message_id else none %}
+
+    {% if target %}
+        <a href="{{ target }}"
+           class="notif-card {{ 'unread' if not n.is_read else 'read' }}"
+           data-id="{{ n.id }}"
+           data-url="{{ url_for('notifications.mark_read', notification_id=n.id) }}">
+            {{ notification_content(n) }}
+        </a>
+    {% else %}
+        {# tabindex + role so the card is reachable and announced: it has no href
+           but is still clickable, since notifications.js marks it read on click.
+           Not operable by Enter/Space — a div does not activate natively. Renders
+           for zero rows today (every new notification records a message_id and
+           takes the <a> path above); if a message-less type such as TASK_DUE ever
+           ships, make this a real <button> rather than adding a keydown handler. #}
+        <div class="notif-card {{ 'unread' if not n.is_read else 'read' }}"
+             tabindex="0"
+             role="button"
+             data-id="{{ n.id }}"
+             data-url="{{ url_for('notifications.mark_read', notification_id=n.id) }}">
+            {{ notification_content(n) }}
+        </div>
+    {% endif %}
 {% endfor %}

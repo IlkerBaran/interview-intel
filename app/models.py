@@ -307,6 +307,11 @@ class Message(db.Model):
         back_populates="message",
         cascade="all, delete-orphan")
 
+    notifications = db.relationship(
+        "Notification",
+        back_populates="message_rel",
+        cascade="all, delete-orphan")
+
 
     def to_dict(self):
         """
@@ -351,6 +356,7 @@ class Notification(db.Model):
     # data columns
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    message_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=True, index=True)
 
     message = db.Column(db.String(300), nullable=False)
     notification_type = db.Column(db.String(50), nullable=False, index=True)
@@ -367,6 +373,11 @@ class Notification(db.Model):
 
     user = db.relationship(
         'User',
+        back_populates='notifications'
+    )
+
+    message_rel = db.relationship(
+        'Message',
         back_populates='notifications'
     )
 

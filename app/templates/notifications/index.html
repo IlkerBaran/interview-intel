@@ -32,6 +32,11 @@
         text-align: left;
         font-family: 'Inter', sans-serif;
         width: 100%;
+        /* The card is an <a> when the notification has a message_id. Link
+           decoration propagates to descendants and cannot be switched off by
+           them, so it has to be cleared here. Harmless on the <div> branch. */
+        color: inherit;
+        text-decoration: none;
     }
 
     .notif-card:hover {

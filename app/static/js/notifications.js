@@ -86,12 +86,12 @@
     }
 
     // ── AJAX helpers ───────────────────────
-    function postJSON(url) {
-        return fetch(url, {
+    function postJSON(url, opts) {
+        return fetch(url, Object.assign({
             method: "POST",
             headers: { "X-CSRFToken": csrf },
             credentials: "same-origin"
-        }).then(r => r.ok ? r.json() : Promise.reject(r));
+        }, opts || {})).then(r => r.ok ? r.json() : Promise.reject(r));
     }
 
     function getJSON(url) {
@@ -101,11 +101,16 @@
     }
 
     // ── Mark single read (delegated → also covers appended rows) ──
+    // No preventDefault: a card with an href navigates to its source message, a
+    // card without one stays put. keepalive is what makes the first case work —
+    // without it the browser cancels the in-flight POST on unload and the
+    // notification silently stays unread. sendBeacon is not an option here: it
+    // cannot set X-CSRFToken, which mark_read requires.
     list.addEventListener("click", function (e) {
         const card = e.target.closest(".notif-card");
         if (!card || !card.classList.contains("unread")) return;
 
-        postJSON(card.dataset.url).then(data => {
+        postJSON(card.dataset.url, { keepalive: true }).then(data => {
             if (!data.ok) return;
             card.classList.remove("unread");
             card.classList.add("read");
