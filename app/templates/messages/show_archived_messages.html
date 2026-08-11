@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import category_badge, urgency_badge %}
+{% from "macros.html" import category_badge, urgency_badge, localtime %}
 
 {% block title %}Archive — Interview Intel{% endblock %}
 
@@ -203,7 +203,7 @@
                                 {% elif message.subject %}
                                     {{ message.subject }}
                                 {% else %}
-                                    Email — {{ message.created_at.strftime('%b %d') }}
+                                    Email — {{ localtime(message.created_at, "date_short") }}
                                 {% endif %}
                             </span>
 
@@ -229,7 +229,7 @@
 
                         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0;">
                             <span class="message-date">
-                                {{ message.updated_at.strftime('%b %d') }}
+                                {{ localtime(message.updated_at, "date_short") }}
                             </span>
 
                             <!-- unarchive form -->

@@ -1,9 +1,12 @@
 {# Notification rows. Shared by notifications/index.html and the
    notifications.load_more_notifications endpoint so card markup
    lives in exactly one place. <time datetime> is an absolute ISO
-   value; notifications.js rewrites the text to a relative label
-   on load. The inner text is a readable absolute fallback for
-   JS-disabled clients. #}
+   value in UTC — the utc_iso filter's trailing Z is required, or
+   new Date() in notifications.js parses it as LOCAL and every
+   recent item collapses to "just now". notifications.js rewrites
+   the text to a relative label on load, falling back to the
+   localtime.js absolute for items past the relative window. The
+   inner text is a labelled UTC fallback for JS-disabled clients. #}
 {% for n in notifications %}
     <button type="button"
             class="notif-card {{ 'unread' if not n.is_read else 'read' }}"
@@ -25,8 +28,9 @@
                     <span class="badge badge-gray">{{ n.notification_type | replace('_', ' ') | title }}</span>
                 {% endif %}
                 <time class="notif-time"
-                      datetime="{{ n.created_at.isoformat() }}">
-                    {{ n.created_at.strftime('%b %d, %Y %H:%M') }}
+                      data-localtime="datetime_short"
+                      datetime="{{ n.created_at | utc_iso }}">
+                    {{ n.created_at.strftime('%b %d, %Y %H:%M') }} UTC
                 </time>
             </span>
         </span>

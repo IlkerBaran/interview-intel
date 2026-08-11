@@ -54,3 +54,38 @@
         {% endif %}
     </div>
 {% endmacro %}
+
+
+{# ─────────────────────────────────────────────
+   Timestamp rendering.
+
+   Stored timestamps are UTC. This emits the instant in a machine-readable
+   form plus a server-rendered UTC fallback; static/js/localtime.js rewrites
+   the text into the viewer's own timezone on load.
+
+   The fallback is explicitly suffixed "UTC" on the time-bearing presets so a
+   JS-disabled client reads a correct labelled time rather than an unlabelled
+   wrong one.
+
+   Do NOT use this for user-entered date-only values such as
+   JobApplication.applied_date (db.Date) — those never passed through UTC and
+   must not be shifted.
+
+   presets: datetime | datetime_short | date | date_short | month_day_year
+───────────────────────────────────────────────── #}
+{% macro localtime(dt, preset="date") %}
+    {%- if dt -%}
+        {%- if preset == "datetime" -%}
+            {%- set fallback = dt.strftime('%B %d, %Y at %I:%M %p') ~ ' UTC' -%}
+        {%- elif preset == "datetime_short" -%}
+            {%- set fallback = dt.strftime('%b %d, %Y %H:%M') ~ ' UTC' -%}
+        {%- elif preset == "date_short" -%}
+            {%- set fallback = dt.strftime('%b %d') -%}
+        {%- elif preset == "month_day_year" -%}
+            {%- set fallback = dt.strftime('%B') ~ ' ' ~ dt.day ~ ', ' ~ dt.strftime('%Y') -%}
+        {%- else -%}
+            {%- set fallback = dt.strftime('%b %d, %Y') -%}
+        {%- endif -%}
+        <time data-localtime="{{ preset }}" datetime="{{ dt | utc_iso }}">{{ fallback }}</time>
+    {%- endif -%}
+{% endmacro %}

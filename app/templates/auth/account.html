@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import localtime %}
 
 {% block title %}Account — Interview Intel{% endblock %}
 
@@ -187,7 +188,7 @@
                     </div>
                     <div class="acc-info-row">
                         <span class="acc-info-label">Joined</span>
-                        <span class="acc-info-val">{{ current_user.created_at.strftime('%B') }} {{ current_user.created_at.day }}, {{ current_user.created_at.strftime('%Y') }}</span>
+                        <span class="acc-info-val">{{ localtime(current_user.created_at, "month_day_year") }}</span>
                     </div>
                 </div>
             </div>

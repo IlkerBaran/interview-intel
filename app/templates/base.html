@@ -122,6 +122,9 @@
         {% block content %}{% endblock %}
     </main>
 
+    {# localtime.js first: it defines window.IITime, which notifications.js
+       (loaded from extra_scripts) calls. #}
+    <script src="{{ url_for('static', filename='js/localtime.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block extra_scripts %}{% endblock %}
 </body>

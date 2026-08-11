@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import localtime %}
 
 {% block title %}{{ task.task_name }} — Interview Intel{% endblock %}
 
@@ -367,7 +368,7 @@
             <div class="detail-row">
                 <span class="detail-label">Created</span>
                 <span class="detail-value">
-                    {{ task.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                    {{ localtime(task.created_at, "datetime") }}
                 </span>
             </div>
 
@@ -375,7 +376,7 @@
             <div class="detail-row">
                 <span class="detail-label">Due Date</span>
                 <span class="detail-value">
-                    {{ task.due_date.strftime('%B %d, %Y') }}
+                    {{ localtime(task.due_date, "month_day_year") }}
                 </span>
             </div>
             {% endif %}
@@ -402,11 +403,11 @@
                         {% elif task.message.subject %}
                             {{ task.message.subject }}
                         {% else %}
-                            Email — {{ task.message.created_at.strftime('%b %d') }}
+                            Email — {{ localtime(task.message.created_at, "date_short") }}
                         {% endif %}
                     </p>
                     <p class="linked-email-sub">
-                        {{ task.message.created_at.strftime('%B %d, %Y') }}
+                        {{ localtime(task.message.created_at, "month_day_year") }}
                         {% if task.message.sender_email %}
                             · {{ task.message.sender_email }}
                         {% endif %}

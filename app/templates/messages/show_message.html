@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import category_badge, urgency_badge %}
+{% from "macros.html" import category_badge, urgency_badge, localtime %}
 
 {% block title %}
     {{ message.analysis_result.role_title or "Email" }}
@@ -345,7 +345,14 @@
                 {% endif %}
             </h1>
             <p class="message-subtitle">
-                Analyzed {{ message.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                {# "Analyzed" must report the analysis, not the submission. ar is
+                   None while the pipeline is pending or after it failed, so fall
+                   back to the submission time under an honest label. #}
+                {% if ar and ar.processed_at %}
+                    Analyzed {{ localtime(ar.processed_at, "datetime") }}
+                {% else %}
+                    Submitted {{ localtime(message.created_at, "datetime") }}
+                {% endif %}
                 {% if message.sender_email %}· {{ message.sender_email }}{% endif %}
             </p>
         </div>

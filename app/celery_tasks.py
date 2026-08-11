@@ -324,7 +324,16 @@ def send_password_changed_email(self, user_id: int, idempotency_key: str) -> Non
         return
 
     now = datetime.now(UTC)
-    changed_at = f"{now.strftime('%B')} {now.day}, {now.strftime('%Y')}"   # date only, portable, no leading zero
+    # State the zone explicitly. The web UI localizes timestamps in the browser
+    # (static/js/localtime.js), but an email has no browser and there is no
+    # per-user timezone to localize into. For a "was this you?" notice an
+    # unlabelled timestamp is worse than a labelled UTC one — and a bare date
+    # can't answer the question at all, since it may be tomorrow's date from the
+    # reader's point of view. Portable, no leading zero on the day.
+    changed_at = (
+        f"{now.strftime('%B')} {now.day}, {now.strftime('%Y')} "
+        f"at {now.strftime('%H:%M')} UTC"
+    )
     params = {
         "to": [user.email],
         "subject": "Your password was changed",

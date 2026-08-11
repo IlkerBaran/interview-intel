@@ -51,6 +51,11 @@
     }
 
     function applyRelativeTime(scope) {
+        // Localize absolute fallbacks first — the server renders them in UTC, and
+        // items older than the relative window keep that text. Scoped, so this
+        // also covers fragments inserted by "Load more".
+        if (window.IITime) window.IITime.apply(scope);
+
         scope.querySelectorAll("time[datetime]").forEach(el => {
             if (el.dataset.relativized) return;
             const label = relativeLabel(el.getAttribute("datetime"));

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import category_badge, urgency_badge %}
+{% from "macros.html" import category_badge, urgency_badge, localtime %}
 
 {% block title %}Dashboard — Interview Intel{% endblock %}
 
@@ -393,7 +393,7 @@
                                     {{ message.subject or "No subject" }}
                                 </span>
                                 <span class="message-date">
-                                    {{ message.created_at.strftime('%b %d') }}
+                                    {{ localtime(message.created_at, "date_short") }}
                                 </span>
                             </div>
 

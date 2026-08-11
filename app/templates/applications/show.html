@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import category_badge, urgency_badge %}
+{% from "macros.html" import category_badge, urgency_badge, localtime %}
 
 {% block title %}{{ application.company }} — {{ application.role }} — Interview Intel{% endblock %}
 
@@ -70,7 +70,7 @@
 
         <div class="detail-meta-item">
             <span class="detail-meta-label">Added</span>
-            <span class="detail-meta-value">{{ application.created_at.strftime('%b %d, %Y') }}</span>
+            <span class="detail-meta-value">{{ localtime(application.created_at, "date") }}</span>
         </div>
 
     </div>
@@ -131,7 +131,7 @@
                     {% endif %}
                 </p>
                 <p class="linked-email-date">
-                    {{ message.created_at.strftime('%b %d, %Y') }}
+                    {{ localtime(message.created_at, "date") }}
                     {% if message.subject %}— {{ message.subject }}{% endif %}
                 </p>
             </div>

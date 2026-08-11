@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import localtime %}
 
 {% block title %}
     {% if message.note %}Edit Note{% else %}Add Note{% endif %}
@@ -197,7 +198,7 @@
             {% elif message.subject %}
                 {{ message.subject }}
             {% else %}
-                Submitted {{ message.created_at.strftime('%B %d, %Y') }}
+                Submitted {{ localtime(message.created_at, "month_day_year") }}
             {% endif %}
         </div>
 

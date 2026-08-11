@@ -1,5 +1,6 @@
 import os
 import logging
+from datetime import UTC
 
 from flask import Flask, has_request_context
 from flask_login import current_user
@@ -123,6 +124,31 @@ def create_app():
         response.headers['X-Frame-Options'] = 'SAMEORIGIN'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         return response
+
+
+    # ≈≈≈≈ timestamp rendering ≈≈≈≈
+    @app.template_filter("utc_iso")
+    def utc_iso(dt):
+        """
+        Render a stored timestamp as an unambiguous UTC ISO-8601 string.
+
+        Every timestamp column is DateTime(timezone=True) and every writer uses
+        datetime.now(UTC), but SQLite has no native tz storage — it drops the
+        offset on write and hands back a NAIVE datetime on read. The value is
+        still UTC; only the label is gone. Re-attach it rather than guessing.
+
+        The trailing 'Z' is load-bearing. Per the ECMAScript spec a date-time
+        string with no timezone designator is parsed as LOCAL by new Date(),
+        which shifts every value by the viewer's offset. Do not emit
+        .isoformat() directly into markup — use this filter.
+
+        Registered on the app (not a blueprint) so macros.html can use it.
+        """
+        if dt is None:
+            return ""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
     @app.context_processor
