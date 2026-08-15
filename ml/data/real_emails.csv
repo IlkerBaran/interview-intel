@@ -1,0 +1,35 @@
+text,category,urgency,job_field,source
+"Subject: Interview - Backend Engineer at Redwood Systems
+
+Hi Ilker,
+
+Thanks for your interest in the Backend Engineer position. We'd like to schedule a technical interview with two of our senior engineers. The session runs 60 minutes and covers system design and a live coding exercise in Python. We use Go and Kubernetes heavily, so some questions will touch on distributed systems.
+
+We have August 27, 2026 at 1:30 PM open. Let me know if this works, or send some alternatives.
+
+Best,
+Dana",interview_invitation,medium,software_engineering,real
+"Subject: Scheduling your interview - Harborstone
+
+Hello Ilker,
+
+Following up to get time on the calendar for the Data Analyst role. Please pick whichever of these suits you:
+Wednesday September 3 at 10:00 AM
+Thursday September 4 at 2:00 PM
+Friday September 5 at 11:00 AM
+
+The conversation will focus on SQL, dashboarding and stakeholder communication. Let me know which works and I'll send the invite.",scheduling,medium,data_related,real
+"Subject: We received your application - BluePeak
+
+Hi Ilker,
+
+Thank you for applying to the Software Engineer, New Grad position at BluePeak. This email confirms we have received your application. Our hiring team reviews every submission and we will be in touch if your background is a fit.
+
+No action is needed from you at this time.",application_received,low,software_engineering,real
+"Subject: Your application to Northwind
+
+Hi Ilker,
+
+Thank you for taking the time to interview for the Full Stack Developer role. After careful consideration we have decided to move forward with other candidates whose experience more closely matches what we need right now.
+
+We appreciate your interest and wish you the best with your search.",rejection,low,fullstack,real

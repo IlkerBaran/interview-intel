@@ -4,7 +4,10 @@ Run this to regenerate all three models from the dataset.
 Usage: python ml/train.py
 """
 
+import json
 import logging
+import random
+import re
 import joblib
 import numpy as np
 import pandas as pd
@@ -26,7 +29,35 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR    = Path(__file__).resolve().parent
 file_path   = BASE_DIR / "data"   / "dataset.csv"
+real_path   = BASE_DIR / "data"   / "real_emails.csv"
 models_dir  = BASE_DIR / "models"
+
+# Below this many rows the real-email score is illustrative only and every line
+# of the report says so. Raise it as the file grows.
+REAL_EVAL_MIN_ROWS = 25
+
+# ── job_field abstain threshold ──
+# DERIVED per model, not hardcoded. The quantity it thresholds is a softmax over
+# raw LinearSVC margins: not a probability, and its scale depends on the margins
+# this particular model happened to learn. A constant rots silently — 0.30 was
+# chosen for 8 classes and was still in place at 11, where it discarded 139 of 368
+# CORRECT held-out predictions and prevented zero errors.
+#
+# Instead: build a probe of emails with the field vocabulary removed, measure the
+# model's confidence on them, and abstain below that distribution's p95. Because
+# the probe is regenerated from the same model each run, the number tracks the
+# scale automatically.
+THRESHOLD_FILE      = models_dir / "job_field_threshold.json"
+NO_SIGNAL_PERCENTILE = 95
+NO_SIGNAL_PER_CATEGORY = 8
+# Words belonging to no field, substituted into real template bodies.
+NO_SIGNAL_VOCAB = {
+    "roles":   ["the role", "the position", "this opening", "the vacancy", "the job"],
+    "tech":    ["our tools", "the systems we use", "our platform", "internal tooling"],
+    "topics":  ["your background", "your experience", "the work itself", "the day to day",
+                "how you approach problems", "your previous projects"],
+    "formats": ["a conversation", "an initial call", "a discussion", "a meeting"],
+}
 
 TARGETS = ("category", "urgency", "job_field")
 
@@ -353,6 +384,147 @@ class ModelTrainer:
         return self
 
     # ══════════════════════════════════════════════════════════════════════
+    # job_field abstain threshold
+    # ══════════════════════════════════════════════════════════════════════
+    def derive_job_field_threshold(self):
+        """
+        Derive the abstain threshold from THIS model and write it beside the pickle.
+
+        The threshold answers "how confident is the model when it genuinely has no
+        idea?" — so measure exactly that. The probe reuses the real template bodies
+        with every field slot filled from NO_SIGNAL_VOCAB, producing emails that are
+        structurally normal and carry no field signal at all. Anything at or below
+        that distribution's p95 is indistinguishable from noise and should show as
+        Unclassified.
+
+        This cannot be tuned against held-out accuracy: the synthetic job_field head
+        scores ~1.0, so every threshold discards only correct answers and prevents
+        no errors. The no-signal probe is the only measurable reference point.
+        """
+        nb_path = BASE_DIR / "notebooks" / "01_generate_synthetic_dataset.ipynb"
+        if not nb_path.exists():
+            logger.warning(
+                "Generator notebook not found — cannot build the no-signal probe. "
+                "Leaving any existing %s untouched.", THRESHOLD_FILE.name,
+            )
+            return self
+
+        # Execute the generator's definition cells (not its write cell) to reuse the
+        # real templates and assembly, so the probe matches production email shape.
+        ns = {"pd": pd, "random": random, "re": re}
+        nb = json.loads(nb_path.read_text())
+        for cell in nb["cells"]:
+            if cell["cell_type"] != "code":
+                continue
+            src = "".join(cell["source"])
+            if "to_csv" in src:
+                src = src.split("random.seed(42)")[0]
+            exec(src, ns)
+
+        random.seed(RANDOM_STATE)
+        templates = {**ns["templates_a"], **ns["templates_b"]}
+        probe = [
+            ns["build_email"](t, NO_SIGNAL_VOCAB, urgency)
+            for lst in templates.values()
+            for t in random.sample(lst, min(NO_SIGNAL_PER_CATEGORY, len(lst)))
+            for urgency in (random.choice(["high", "medium", "low"]),)
+        ]
+
+        _, model = self.best["job_field"]
+        scores = model.decision_function(probe)
+        exp    = np.exp(scores - scores.max(axis=1, keepdims=True))
+        conf   = (exp / exp.sum(axis=1, keepdims=True)).max(axis=1)
+
+        threshold = round(float(np.percentile(conf, NO_SIGNAL_PERCENTILE)), 3)
+        n_classes = len(model.classes_)
+
+        logger.info("\n%s", "=" * 70)
+        logger.info("JOB_FIELD ABSTAIN THRESHOLD (derived)")
+        logger.info("%s", "=" * 70)
+        logger.info(
+            "  no-signal probe n=%d: min %.3f | median %.3f | p95 %.3f | max %.3f",
+            len(probe), conf.min(), np.median(conf), threshold, conf.max(),
+        )
+        logger.info("  chance for %d classes = %.3f", n_classes, 1 / n_classes)
+        logger.info("  threshold -> %.3f  (written to %s)", threshold, THRESHOLD_FILE.name)
+
+        models_dir.mkdir(exist_ok=True)
+        THRESHOLD_FILE.write_text(json.dumps({
+            "job_field_confidence_threshold": threshold,
+            "derivation": f"p{NO_SIGNAL_PERCENTILE} of a no-signal probe (n={len(probe)})",
+            "n_classes": n_classes,
+            "chance": round(1 / n_classes, 4),
+            "note": ("Softmax over uncalibrated LinearSVC margins — not a probability. "
+                     "Regenerated by ml/train.py on every run; do not hand-edit."),
+        }, indent=2) + "\n")
+        return self
+
+    # ══════════════════════════════════════════════════════════════════════
+    # real-email evaluation
+    # ══════════════════════════════════════════════════════════════════════
+    def report_real_emails(self):
+        """
+        Score the winning models against hand-labelled REAL email.
+
+        Everything above this point is measured on synthetic data, and synthetic
+        data cannot tell you whether the vocabulary matches real recruiting mail
+        — the failure that started all of this. The previous corpus scored 1.000
+        on category offline and 0.33-0.59 on real email, and no change to the
+        splitting protocol could have revealed that. This block is the only
+        number here that can.
+
+        It is deliberately loud about sample size. With a handful of rows the
+        percentage is illustrative, not evidence, and printing it as though it
+        were a metric would repeat the original mistake in a new form.
+        """
+        if not real_path.exists():
+            logger.info("\nNo %s — skipping real-email evaluation.", real_path.name)
+            return self
+
+        real = pd.read_csv(real_path)
+        real["text"] = real["text"].str.strip().str.replace(r"\s+", " ", regex=True)
+
+        logger.info("\n%s", "=" * 70)
+        logger.info("REAL EMAIL — held out entirely, never trained on")
+        logger.info("%s", "=" * 70)
+
+        if len(real) < REAL_EVAL_MIN_ROWS:
+            logger.warning(
+                "%d rows. This is ILLUSTRATIVE, NOT A MEASUREMENT — far too few to "
+                "support any conclusion about real-world accuracy. Paste in more "
+                "real email; %d+ before treating the numbers below as meaningful.",
+                len(real), REAL_EVAL_MIN_ROWS,
+            )
+
+        for target in TARGETS:
+            if target not in real.columns:
+                continue
+            _, pipeline = self.best[target]
+            pred = pipeline.predict(real["text"])
+            hits = (pred == real[target]).sum()
+            logger.info("\n  %s — %d/%d correct", target, hits, len(real))
+            for i, (got, want) in enumerate(zip(pred, real[target])):
+                mark = "ok  " if got == want else "MISS"
+                logger.info("    [%s] row %d  predicted=%-22s labelled=%s",
+                            mark, i, got, want)
+
+        # OOV is the metric the retrain was actually aimed at, so report it here
+        # rather than leaving it to a one-off script.
+        vec = TfidfVectorizer(ngram_range=(1, 2), max_features=5000, sublinear_tf=True)
+        vec.fit(self.train_df["text"])
+        vocab = set(vec.vocabulary_)
+        rates = []
+        for text in real["text"]:
+            words = set(re.findall(r"[a-z0-9]+", text.lower()))
+            rates.append(sum(1 for w in words if w not in vocab) / max(len(words), 1))
+        logger.info(
+            "\n  out-of-vocabulary rate vs training vocab: median %.1f%% "
+            "(per row: %s)",
+            np.median(rates) * 100, ", ".join(f"{r * 100:.1f}%" for r in rates),
+        )
+        return self
+
+    # ══════════════════════════════════════════════════════════════════════
     # save
     # ══════════════════════════════════════════════════════════════════════
     def save_models(self):
@@ -379,4 +551,6 @@ if __name__ == "__main__":
      .load_data()
      .report_memorisation()
      .train_all()
+     .derive_job_field_threshold()
+     .report_real_emails()
      .save_models())

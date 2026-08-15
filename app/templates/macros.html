@@ -18,6 +18,8 @@
         <span class="badge badge-blue">Recruiter Outreach</span>
     {% elif category == 'follow_up' %}
         <span class="badge badge-gray">Follow-up</span>
+    {% elif category == 'application_received' %}
+        <span class="badge badge-gray">Application Received</span>
     {% else %}
         <span class="badge badge-gray">{{ category | replace('_', ' ') | title }}</span>
     {% endif %}

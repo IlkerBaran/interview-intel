@@ -73,6 +73,7 @@ class MessageCategory(BaseEnum):
     SCHEDULING = 'scheduling'
     OFFER = 'offer'
     FOLLOW_UP = 'follow_up'
+    APPLICATION_RECEIVED = 'application_received'
 
 
 class MessageUrgency(BaseEnum):

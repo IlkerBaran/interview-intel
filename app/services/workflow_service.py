@@ -21,7 +21,7 @@ from app.models import (
     Notification
 )
 import anthropic
-from app.services.ml_service import ml_service
+from app.services.ml_service import ml_service, JOB_FIELD_UNCLASSIFIED
 from app.services.llm_service import llm_service, TRANSIENT_LLM_ERRORS
 from app.services.preprocess_language import normalize_text
 
@@ -52,8 +52,15 @@ class AutoLinkResult:
 
 
 # ≈≈≈≈ backend urgency rules ≈≈≈≈
-# ML predicts urgency also backend ensures overrides for known high-urgency categories
-HIGH_URGENCY_CATEGORIES = {"interview_invitation", "offer"}
+# A FLOOR, not an override. Only lifts when the model says LOW; a model reading of
+# medium or high stands untouched.
+#
+# The old rule forced "high" on every invitation and offer regardless of the text,
+# which made the badge mean "interview" rather than "act soon" — and now that
+# urgency is derived from a stated deadline in the email, a blanket override would
+# discard the model's answer for exactly the two categories where it varies most.
+URGENCY_FLOOR_CATEGORIES = {"interview_invitation", "offer"}
+URGENCY_FLOOR_LEVEL = "medium"
 
 # ≈≈≈≈ Context Sharing ≈≈≈≈
 # similar categories for inheritance check
@@ -62,7 +69,11 @@ SIMILAR_CATEGORY_GROUPS = {
     "interview_invitation": {"interview_invitation", "scheduling", "offer", "follow_up"},
     "scheduling":           {"interview_invitation", "scheduling", "offer", "follow_up"},
     "offer":                {"interview_invitation", "scheduling", "offer", "follow_up"},
-    "follow_up":            {"interview_invitation", "scheduling", "offer", "follow_up"},
+    "follow_up":            {"interview_invitation", "scheduling", "offer", "follow_up",
+                             "application_received"},
+    # An acknowledgement and a later check-in from the same sender are one process,
+    # so the field learned from either should carry to the other.
+    "application_received": {"application_received", "follow_up"},
     "recruiter_outreach":   {"recruiter_outreach"},
     "rejection":            {"rejection"}
 }
@@ -160,6 +171,14 @@ GUIDANCE_POLICY = {
         prep=True, questions=False, reply=True,
         stage="The application is in progress and nothing is scheduled. Write about what "
               "to do while waiting. Do NOT write interview-day logistics.",
+    ),
+    "application_received": GuidancePolicy(
+        prep=True, questions=False, reply=False,
+        stage="An application has just been submitted and acknowledged. Nothing is "
+              "scheduled and there is no interviewer yet. Write about what to do now "
+              "that they have applied — research the company, get their own projects "
+              "and numbers straight, be ready if a call comes. Do NOT write "
+              "interview-day logistics or a study plan aimed at a date.",
     ),
     "offer": GuidancePolicy(
         prep=True, questions=False, reply=True,
@@ -345,13 +364,17 @@ def run_message_analysis(message: Message) -> None:
         ml_result["urgency_source"] = "unavailable"
         ml_result["job_field_source"] = "unavailable"
     else:
-        if category in HIGH_URGENCY_CATEGORIES:
-            ml_result["urgency"] = "high"
-            ml_result["urgency_source"] = "rule_based"
+        # "rule_based" is retired for urgency: under a floor the model is always
+        # consulted, so naming a rule when the floor did not fire would put a false
+        # claim in the audit log. Only name it when it actually lifted something.
+        if (category in URGENCY_FLOOR_CATEGORIES
+                and ml_result.get("urgency") == "low"):
+            ml_result["urgency"] = URGENCY_FLOOR_LEVEL
+            ml_result["urgency_source"] = "floor_applied"
         else:
             ml_result["urgency_source"] = "ml_predicted"
 
-        if ml_result.get("job_field") == "general" and sender_email:
+        if ml_result.get("job_field") == JOB_FIELD_UNCLASSIFIED and sender_email:
             inherited = _inherit_job_field(user_id, sender_email, category)
             if inherited:
                 ml_result["job_field"] = inherited
@@ -699,7 +722,7 @@ def _inherit_job_field(
             .where(
                 Message.user_id == user_id,
                 Message.sender_email == sender_email,
-                AnalysisResult.job_field != "general",
+                AnalysisResult.job_field != JOB_FIELD_UNCLASSIFIED,
                 AnalysisResult.job_field.isnot(None),
                 AnalysisResult.message_category.in_(similar_categories),
             )

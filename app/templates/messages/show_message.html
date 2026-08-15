@@ -427,13 +427,13 @@
                        threshold in ml_service.predict() or by sender inheritance — so no
                        number is shown beside a label that did not earn it. No percentage
                        at all for job_field: unlike category/urgency this is a softmax over
-                       LinearSVC margins across 8 classes, where 12.5% is chance. Revisit
-                       after retraining. #}
+                       uncalibrated LinearSVC margins, where chance is 1/11. The threshold
+                       itself is derived per model by ml/train.py. #}
                     <div class="prediction-item">
                         <span class="prediction-label">Field</span>
                         {% if not ar.job_field %}
                             <span class="badge badge-gray">Unknown</span>
-                        {% elif ar.job_field == "general" and ar.job_field_confidence is none %}
+                        {% elif ar.job_field == "unclassified" and ar.job_field_confidence is none %}
                             <span class="badge badge-gray">Unclassified</span>
                             <span class="confidence">not enough signal</span>
                         {% else %}
