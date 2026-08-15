@@ -144,6 +144,12 @@
         color: #c4b9aa;
     }
 
+    .section-hint {
+        font-size: 0.72rem;
+        color: #a89880;
+        font-weight: 500;
+    }
+
     /* ── LLM TEXT CONTENT ── */
     .llm-content {
         font-size: 0.875rem;
@@ -417,13 +423,27 @@
                         {% endif %}
                     </div>
 
+                    {# A NULL confidence means the label was substituted — by the
+                       threshold in ml_service.predict() or by sender inheritance — so no
+                       number is shown beside a label that did not earn it. No percentage
+                       at all for job_field: unlike category/urgency this is a softmax over
+                       LinearSVC margins across 8 classes, where 12.5% is chance. Revisit
+                       after retraining. #}
                     <div class="prediction-item">
                         <span class="prediction-label">Field</span>
-                        <span class="badge badge-gray">
-                            {{ ar.job_field | replace("_", " ") | title if ar.job_field else "Unknown" }}
-                        </span>
-                        {% if ar.job_field_confidence %}
-                            <span class="confidence">{{ (ar.job_field_confidence * 100)|int }}%</span>
+                        {% if not ar.job_field %}
+                            <span class="badge badge-gray">Unknown</span>
+                        {% elif ar.job_field == "general" and ar.job_field_confidence is none %}
+                            <span class="badge badge-gray">Unclassified</span>
+                            <span class="confidence">not enough signal</span>
+                        {% else %}
+                            <span class="badge badge-gray"
+                                  {% if ar.job_field_confidence %}title="raw score {{ ar.job_field_confidence }} — uncalibrated, not a probability"{% endif %}>
+                                {{ ar.job_field | replace("_", " ") | title }}
+                            </span>
+                            {% if ar.job_field_confidence is none %}
+                                <span class="confidence">from earlier emails</span>
+                            {% endif %}
                         {% endif %}
                     </div>
 
@@ -521,6 +541,7 @@
         <div class="section">
             <div class="section-header">
                 <h2 class="section-title">Suggested Reply</h2>
+                <span class="section-hint">Draft — read and edit before sending</span>
             </div>
             <div class="section-body">
                 <div class="llm-content">{{ ar.reply_suggestions }}</div>

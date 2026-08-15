@@ -100,9 +100,22 @@ class MlService:
 
             # ≈≈≈≈ low confidence → return general ≈≈≈≈
             # if model is uncertain about job field, don't guess
+            # The score goes with the label: a NULL confidence is the template's signal
+            # for "substituted", as opposed to "predicted general".
             if job_field_conf < JOB_FIELD_CONFIDENCE_THRESHOLD:
-                logger.debug("Low job field confidence (%.3f) - return general", job_field_conf)
+                logger.debug(
+                    "Job field below threshold (%s at %.3f) — substituting 'general' "
+                    "and dropping the score",
+                    job_field,
+                    job_field_conf,
+                    extra={
+                        "job_field": job_field,
+                        "job_field_conf": job_field_conf,
+                        "job_field_threshold": JOB_FIELD_CONFIDENCE_THRESHOLD,
+                    }
+                )
                 job_field = "general"
+                job_field_conf = None
 
             return {
                 "category":             category,

@@ -1,5 +1,6 @@
 import logging
 import json
+from datetime import datetime, UTC
 from typing import Optional, Dict, Any
 
 from flask import current_app
@@ -224,21 +225,58 @@ EMAIL:
         company_name:     Optional[str],
         interview_format: Optional[str],
         job_field:        Optional[str],
+        stage_note: Optional[str] = None,
+        date_text: Optional[str] = None,
+        time_text: Optional[str] = None
     ) -> Optional[str]:
-        """Generate preparation guidance tailored to the role and company."""
+        """
+        Generate preparation guidance tailored to the role, company, and stage.
 
-        prompt = f"""You are a career coach helping a job seeker prepare for an interview.
+        stage_note describes where the user is in the hiring process (see
+        workflow_service.GUIDANCE_POLICY), so an early recruiter email does not trigger
+        interview-day guidance for an interview that has not been scheduled.
+
+        date_text and time_text are the raw extracted strings and are deliberately not
+        parsed here. They may contain multiple candidate dates or time slots in a single
+        string, so the model interprets them against today's date and adjusts the advice
+        accordingly.
+
+        Both blocks are omitted when their inputs are absent, so a message with no stage
+        and no date keeps the pre-existing prompt behavior.
+        """
+        stage_block = f"\nSTAGE\n{stage_note}\n" if stage_note else ""
+
+        when = " ".join(p.strip() for p in (date_text, time_text) if p and p.strip())
+        timing_block = ""
+        if when:
+            timing_block = f"""
+TIMING
+Today is {datetime.now(UTC).strftime("%B %d, %Y")}.
+The email gives this timing: {when}
+
+That is raw text from the email and may list several possible slots rather than one.
+Read it and pace the advice to the time actually left:
+- A few days or less: lead with logistics and the two or three highest-leverage things
+  that can realistically be done. Do NOT write a multi-week study plan.
+- A week or more: a paced plan is appropriate.
+- Several slots listed: plan against the EARLIEST one.
+- If you cannot tell how far away it is, give advice that does not depend on that.
+"""
+
+        prompt = f"""You are a career coach helping a job seeker.
 
 Role: {role_title or "Unknown"}
 Company: {company_name or "Unknown"}
 Format: {interview_format or "General"}
 Field: {job_field or "General"}
-
-Write a concise preparation guide including:
+{stage_block}{timing_block}
+Write a concise preparation guide. Cover only the points that make sense at this stage:
 1. Key topics to review
 2. Skills to demonstrate
 3. Company research tips
 4. Format-specific advice
+
+Do not assume an interview has been scheduled unless the STAGE section says so.
 
 Max 250 words. Be practical and specific."""
 
@@ -274,7 +312,16 @@ Rules:
         role_title:   Optional[str],
         company_name: Optional[str],
     ) -> Optional[str]:
-        """Generate a professional draft reply for the candidate to send."""
+        """
+        Generate a professional DRAFT reply for the candidate to edit and send.
+
+        The old rule set ("confirm receipt", "show enthusiasm", "if interview
+        invitation — confirm or ask for scheduling") told the model to close the loop
+        and never forbade it from inventing the fact that closes it, so it resolved
+        the user's scheduling choices for them: it "confirmed" a single offered slot
+        and picked one of three offered slots as working "best". Grounding and
+        decision rules below are what stop that; keep them explicit.
+        """
 
         prompt = f"""Write a professional email reply for a job seeker.
 
@@ -285,15 +332,33 @@ Company: {company_name or "the company"}
 Original email:
 {raw_text}
 
-Rules:
-- Confirm receipt
-- Show enthusiasm
-- If interview invitation — confirm or ask for scheduling
-- No placeholder names like [your name]
-- No signature block
-- Max 120 words."""
+This is a DRAFT the job seeker will read and edit before sending. It must never
+commit them to something they have not decided.
 
-        return self._call(prompt, max_tokens=250)
+GROUNDING — hard rules:
+- Use ONLY facts stated in the original email above.
+- Introduce NO date, time, location, salary, title or commitment that does not
+  already appear in that email.
+- Invent nothing about the sender, the team, or the process.
+
+DECISIONS — hard rules:
+- If the email asks the job seeker to choose — accept or decline a time, pick one of
+  several slots, answer a question — DO NOT choose for them.
+- Restate the options exactly as the email gave them and leave the choice open with a
+  short bracketed instruction, e.g. "[pick one]".
+- NEVER write that a time "works", "works best", "works perfectly", or that they are
+  "confirming" / "pleased to confirm" anything. They have not told you that.
+- If the email offers a single time, acknowledge it and leave BOTH accepting it and
+  proposing an alternative available to them.
+
+STYLE:
+- Acknowledge the email and express genuine interest.
+- End with a sign-off and "[Your name]" as a placeholder for the job seeker to replace.
+- Bracketed text is for either a decision the job seeker must make, or the name
+  placeholder — nothing else.
+- Max 150 words."""
+
+        return self._call(prompt, max_tokens=300)
 
     def generate_role_summary(
         self,

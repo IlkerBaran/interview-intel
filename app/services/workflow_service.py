@@ -127,6 +127,56 @@ TASK_RULES = {
 }
 
 
+# ≈≈≈≈ guidance stage rules ≈≈≈≈
+# What to produce for each category, and which moment in the process to write for.
+# Keys are the six classes the model can emit — there is no "application_received",
+# so a confirmation lands on follow_up at best.
+@dataclass(frozen=True)
+class GuidancePolicy:
+    prep: bool
+    questions: bool
+    reply: bool
+    stage: str
+
+
+GUIDANCE_POLICY = {
+    "interview_invitation": GuidancePolicy(
+        prep=True, questions=True, reply=True,
+        stage="An interview has been offered or scheduled. Write for someone preparing "
+              "to attend it.",
+    ),
+    "scheduling": GuidancePolicy(
+        prep=True, questions=True, reply=True,
+        stage="An interview is being scheduled. Write for someone preparing to attend it.",
+    ),
+    "recruiter_outreach": GuidancePolicy(
+        prep=True, questions=False, reply=True,
+        stage="A recruiter has made first contact. Nothing is scheduled and there is no "
+              "interviewer yet. Write about what to do NOW — research the company, get "
+              "their own projects and numbers straight, be ready if a call comes. Do NOT "
+              "write interview-day logistics or a study plan aimed at a date.",
+    ),
+    "follow_up": GuidancePolicy(
+        prep=True, questions=False, reply=True,
+        stage="The application is in progress and nothing is scheduled. Write about what "
+              "to do while waiting. Do NOT write interview-day logistics.",
+    ),
+    "offer": GuidancePolicy(
+        prep=True, questions=False, reply=True,
+        stage="An offer has been made and no interview is pending. Write for someone "
+              "evaluating and negotiating it. Do NOT suggest technical study.",
+    ),
+    "rejection": GuidancePolicy(prep=False, questions=False, reply=False, stage=""),
+}
+
+# ML unavailable or an unknown label — stage-neutral fallback rather than a guess.
+UNKNOWN_STAGE_POLICY = GuidancePolicy(
+    prep=True, questions=False, reply=True,
+    stage="The stage of the process is unknown. Write stage-neutral preparation advice "
+          "and do not assume an interview has been scheduled.",
+)
+
+
 # ≈≈≈≈ status auto-update rules ≈≈≈≈
 # maps email category → the application status it should trigger
 STATUS_MAP = {
@@ -305,6 +355,7 @@ def run_message_analysis(message: Message) -> None:
             inherited = _inherit_job_field(user_id, sender_email, category)
             if inherited:
                 ml_result["job_field"] = inherited
+                ml_result["job_field_conf"] = None   # score belonged to the label
                 ml_result["job_field_source"] = "inherited"
             else:
                 ml_result["job_field_source"] = "ml_predicted"
@@ -358,7 +409,7 @@ def run_message_analysis(message: Message) -> None:
     llm_interview_stage = details.get("interview_stage")
     llm_interview_format = details.get("interview_format")
 
-    # ── LLM enrichment: SEQUENTIAL, best-effort ──
+    # ── LLM enrichment: SEQUENTIAL, best-effort, STAGE-GATED ──
     llm_outputs = {}
     if llm_ran:
         llm_outputs = _run_llm_enrichments(
@@ -366,6 +417,8 @@ def run_message_analysis(message: Message) -> None:
             role_title=llm_role_title, company_name=llm_company_name,
             interview_stage=llm_interview_stage, interview_format=llm_interview_format,
             job_field=llm_job_field,
+            date_text=details.get("date_text"),
+            time_text=details.get("time_text"),
         )
 
     tools_used = []
@@ -522,16 +575,24 @@ def _run_llm_enrichments(
         interview_stage: Optional[str],
         interview_format: Optional[str],
         job_field: Optional[str],
+        date_text: Optional[str] = None,
+        time_text: Optional[str] = None,
 ) -> dict:
     """
-    Run the 5 enrichment calls SEQUENTIALLY in the task's single app context (no
-    threads). Best-effort: a genuine failure of any single enrichment degrades that
-    field to None and is logged; it never propagates (only the critical extraction
-    retries the pipeline).
+    Run the enrichment calls SEQUENTIALLY in the task's single app context (no threads).
+
+    GUIDANCE_POLICY decides which run. A skipped call is never built, so it costs no
+    tokens; its column stays NULL and show_message.html omits the whole section.
+
+    date_text/time_text go to the prep call raw — nothing is parsed here.
+
+    Best-effort: a genuine failure of any single enrichment degrades that field to None
+    and is logged; it never propagates (only the critical extraction retries).
     """
     if not llm_service.is_loaded:
         return {}
 
+    # All five keys stay seeded — a skipped enrichment and a failed one both land as NULL.
     outputs = {
         "preparation_guidance": None,
         "suggested_questions": None,
@@ -540,38 +601,58 @@ def _run_llm_enrichments(
         "archive_summary": None,
     }
 
-    calls = {
-        "preparation_guidance": lambda: llm_service.generate_preparation_guidance(
+    policy = GUIDANCE_POLICY.get(category, UNKNOWN_STAGE_POLICY)
+
+    calls = {}
+
+    if policy.prep:
+        calls["preparation_guidance"] = lambda: llm_service.generate_preparation_guidance(
             role_title=role_title,
             company_name=company_name,
             interview_format=interview_format,
             job_field=job_field,
-        ),
-        "suggested_questions": lambda: llm_service.suggest_candidate_questions(
+            stage_note=policy.stage,
+            date_text=date_text,
+            time_text=time_text,
+        )
+
+    if policy.questions:
+        calls["suggested_questions"] = lambda: llm_service.suggest_candidate_questions(
             role_title=role_title,
             company_name=company_name,
             interview_stage=interview_stage,
             job_field=job_field,
-        ),
-        "reply_suggestions": lambda: llm_service.generate_reply_suggestions(
+        )
+
+    if policy.reply:
+        calls["reply_suggestions"] = lambda: llm_service.generate_reply_suggestions(
             raw_text=normalized_text,
             category=category,
             role_title=role_title,
             company_name=company_name,
-        ),
-        "role_summary": lambda: llm_service.generate_role_summary(
-            role_title=role_title,
-            company_name=company_name,
-            job_field=job_field,
-            raw_text=normalized_text,
-        ),
-        "archive_summary": lambda: llm_service.generate_archive_summary(
-            role_title=role_title,
-            company_name=company_name,
-            category=category,
-            raw_text=normalized_text,
-        ),
-    }
+        )
+
+    # Always run: meaningful at every stage.
+    calls["role_summary"] = lambda: llm_service.generate_role_summary(
+        role_title=role_title,
+        company_name=company_name,
+        job_field=job_field,
+        raw_text=normalized_text,
+    )
+    calls["archive_summary"] = lambda: llm_service.generate_archive_summary(
+        role_title=role_title,
+        company_name=company_name,
+        category=category,
+        raw_text=normalized_text,
+    )
+
+    skipped = sorted(k for k in outputs if k not in calls)
+    if skipped:
+        logger.info(
+            "Stage gating: skipped %s for category=%s",
+            ", ".join(skipped), category,
+            extra={"category": category, "skipped_enrichments": skipped},
+        )
 
     for key, fn in calls.items():
         try:
