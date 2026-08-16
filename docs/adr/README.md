@@ -34,6 +34,7 @@ See [ADR-0001](0001-record-architecture-decisions.md) for why this practice exis
 | [0011](0011-analysis-task-reliability-and-terminal-state.md)              | Analysis Task Reliability and Terminal State    | Accepted |
 | [0012](0012-Rate-Limiting-IP-Keying-Fail-Open-Storage-and-Proxy-Trust.md) | Rate Limiting: IP Keying, Fail-Open Storage, and Proxy Trust    | Accepted |
 | [0013](0013-per-user-lifetime-analysis-quota.md)                          | Per-User Lifetime Analysis Quota                | Accepted |
+| [0014](0014-classifier-retrain-and-label-redesign.md)                     | Classifier Retrain and Label Redesign           | Accepted |
 
 ## Adding a new ADR
 
