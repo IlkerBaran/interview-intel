@@ -34,6 +34,11 @@ TRANSIENT_LLM_ERRORS = (
     OverloadedError                 # 529: Anthropic service overloaded.
 )
 
+# ── extracted action items ──
+# Enforce limits in both the prompt and code to match database field sizes.
+MAX_ACTION_ITEMS      = 5
+MAX_ACTION_LENGTH     = 255
+MAX_DUE_TEXT_LENGTH   = 120
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LLM_FAKE success-mode canned responses
@@ -43,7 +48,7 @@ TRANSIENT_LLM_ERRORS = (
 #     These hardcoded payloads mirror what the parsers below currently expect:
 #
 #       * extract_interview_details() + _safe_json_load() (this file) parse the
-#         extraction response as JSON with the exact 7 keys in _FAKE_EXTRACTION_JSON.
+#         extraction response as JSON with the exact 8 keys in _FAKE_EXTRACTION_JSON.
 #         If a key there is renamed / added / removed, update _FAKE_EXTRACTION_JSON in
 #         LOCKSTEP.
 #       * the 5 enrichment methods (generate_* / suggest_*) return _call()'s output
@@ -54,6 +59,7 @@ TRANSIENT_LLM_ERRORS = (
 #     success test keeps passing against the STALE shape while real Anthropic responses
 #     use the NEW shape — a green-for-the-wrong-reason failure. Only the extraction
 #     entry is parser-coupled; keep it matching the schema in extract_interview_details().
+# Keep the fake response in sync with the extraction schema.
 _FAKE_EXTRACTION_JSON = json.dumps({
     "company_name":     "Google",
     "role_title":       "Software Engineer",
@@ -62,6 +68,13 @@ _FAKE_EXTRACTION_JSON = json.dumps({
     "date_text":        "next Tuesday",
     "time_text":        "10:00 AM",
     "location_text":    "123 Main St, San Francisco",
+    # Test action items with and without a deadline.
+    "action_items": [
+        {"action": "Reply with your preferred interview time",
+         "due_text": "Friday, March 14"},
+        {"action": "Send a link to your portfolio",
+         "due_text": None}
+    ]
 })
 
 # Ordered (unique prompt substring) -> canned response. First match wins.
@@ -191,7 +204,7 @@ OUTPUT RULES:
 - Use null for any missing value — never omit a key
 - Use double quotes for all strings
 
-REQUIRED KEYS (all 7 must be present):
+REQUIRED KEYS (all 8 must be present):
 {{
   "company_name": string or null,
   "role_title": string or null,
@@ -199,13 +212,28 @@ REQUIRED KEYS (all 7 must be present):
   "interview_format": string or null,
   "date_text": string or null,
   "time_text": string or null,
-  "location_text": string or null
+  "location_text": string or null,
+  "action_items": array (use [] when the email asks for nothing)
 }}
+
+ACTION ITEMS:
+Each entry is {{"action": string, "due_text": string or null}}.
+- Include ONLY things the email explicitly asks the RECIPIENT to do.
+- Do NOT include what the sender will do, and do NOT add generic advice such as
+  "research the company" — only what the email actually states.
+- "action" is a short imperative phrase, under 100 characters.
+- "due_text" is the deadline copied VERBATIM from the email ("by Tuesday,
+  August 11", "before the call"), or null if the email states no deadline.
+- At most {MAX_ACTION_ITEMS} entries.
 
 EMAIL:
 {raw_text}"""
 
-        response = self._call(prompt, max_tokens=300, idempotency_key=idempotency_key)
+        # 600, not 300: the 7 scalar fields use ~130 tokens and up to 5 action items
+        # add ~150–250 more. If the response is cut off mid-array, the JSON becomes
+        # invalid and the whole extraction can fall back to {}. The item cap and extra
+        # headroom protect the structured fields from a long action list.
+        response = self._call(prompt, max_tokens=600, idempotency_key=idempotency_key)
         parsed   = self._safe_json_load(response)
 
         # enforce schema — always return complete dict
@@ -217,7 +245,41 @@ EMAIL:
             "date_text":        parsed.get("date_text"),
             "time_text":        parsed.get("time_text"),
             "location_text":    parsed.get("location_text"),
+            "action_items":     self._coerce_action_items(parsed.get("action_items")),
         }
+
+    @staticmethod
+    def _coerce_action_items(raw):
+        """
+        Force whatever the model returned into a list of {action, due_text}.
+
+        This runs on the CRITICAL extraction path, so it must never raise. A
+        malformed action list would otherwise take company_name and role_title
+        down with it — the price of carrying actions in the same call rather
+        than a sixth one. Anything unexpected becomes [] or is skipped silently.
+
+        Truncation is a hard backstop, not a formatting choice: these strings go
+        straight into Task.task_name (String(255)) and Task.due_text
+        (String(120)), and a rambling extraction must not become a database
+        error inside the pipeline's single transaction.
+        """
+        if not isinstance(raw, list):
+            return []
+
+        items = []
+        for entry in raw[:MAX_ACTION_ITEMS]:
+            if not isinstance(entry, dict):
+                continue
+            action = entry.get("action")
+            if not isinstance(action, str) or not action.strip():
+                continue
+            due = entry.get("due_text")
+            items.append({
+                "action":   action.strip()[:MAX_ACTION_LENGTH],
+                "due_text": (due.strip()[:MAX_DUE_TEXT_LENGTH]
+                             if isinstance(due, str) and due.strip() else None),
+            })
+        return items
 
     def generate_preparation_guidance(
         self,

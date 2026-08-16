@@ -206,6 +206,7 @@ def export_data():
                 "description": t.description,
                 "priority": t.priority,
                 "is_completed": t.is_completed,
+                "due_text": t.due_text,
                 "due_date": t.due_date.isoformat() if t.due_date else None,
                 "created_at": t.created_at.isoformat() if t.created_at else None,
             }

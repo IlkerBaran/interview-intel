@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import localtime %}
 
 {% block title %}Tasks — Interview Intel{% endblock %}
 
@@ -148,6 +149,19 @@
     .task-company {
         font-size: 0.75rem;
         color: #a89880;
+    }
+
+    .task-due {
+        font-size: 0.72rem;
+        color: #746857;
+        font-weight: 600;
+    }
+
+    /* Overdue is the first such state this app has had. Colour alone is not the
+       signal — the word "Overdue" carries it for anyone who cannot separate the
+       hue from the surrounding muted text. */
+    .task-due.overdue {
+        color: #dc2626;
     }
 
     /* ── BADGES ── */
@@ -389,6 +403,19 @@
                                 <span class="task-company">
                                     {{ task.message.analysis_result.company_name or "Unknown company" }}
                                 </span>
+                            {% endif %}
+
+                            {# A parsed date renders localised and can be overdue; an
+                               unparsed one renders the email's own words ("before the
+                               call") and never can. Both beat showing nothing. #}
+                            {% if task.due_date %}
+                                {% set overdue = not task.is_completed and task.due_date < utc_now %}
+                                <span class="task-due {% if overdue %}overdue{% endif %}">
+                                    {% if overdue %}Overdue ·{% endif %}
+                                    Due {{ localtime(task.due_date, "month_day_year") }}
+                                </span>
+                            {% elif task.due_text %}
+                                <span class="task-due">Due {{ task.due_text }}</span>
                             {% endif %}
                         </div>
                     </a>

@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, UTC
 from typing import Optional
 from dataclasses import dataclass, field
@@ -52,13 +53,8 @@ class AutoLinkResult:
 
 
 # ≈≈≈≈ backend urgency rules ≈≈≈≈
-# A FLOOR, not an override. Only lifts when the model says LOW; a model reading of
-# medium or high stands untouched.
-#
-# The old rule forced "high" on every invitation and offer regardless of the text,
-# which made the badge mean "interview" rather than "act soon" — and now that
-# urgency is derived from a stated deadline in the email, a blanket override would
-# discard the model's answer for exactly the two categories where it varies most.
+# Floor, not override: only LOW is raised to medium; medium/high stay unchanged.
+# Replaces the old blanket HIGH rule so deadline-based urgency is not overwritten.
 URGENCY_FLOOR_CATEGORIES = {"interview_invitation", "offer"}
 URGENCY_FLOOR_LEVEL = "medium"
 
@@ -79,26 +75,39 @@ SIMILAR_CATEGORY_GROUPS = {
 }
 
 # ≈≈≈≈ task generation rules ≈≈≈≈
-# Backend decides what tasks to create based on category
-# LLM never writes directly to the database
+# Backend creates tasks from extracted actions and category defaults;
+# the LLM never writes directly to the database.
+#
+# * RESPONSE: generic actions that may duplicate an extracted email action,
+# so suppress them when extraction finds any.
+# * STANDING: general advice the email would not state, so always keep them.
+TASK_KIND_RESPONSE = "response"
+TASK_KIND_STANDING = "standing"
+
+# Cap total tasks so extracted actions take priority over generic defaults.
+MAX_TASKS_PER_MESSAGE = 8
+
 TASK_RULES = {
     "interview_invitation": [
         {
             "task_name": "Confirm interview schedule",
             "description": "Reply to confirm your availability for the interview.",
-            "priority": TaskPriority.HIGH
+            "priority": TaskPriority.HIGH,
+            "kind": TASK_KIND_RESPONSE
         },
 
         {
             "task_name": "Research the company",
             "description": "Look up the company mission, products, team, and recent news.",
-            "priority": TaskPriority.HIGH
+            "priority": TaskPriority.HIGH,
+            "kind": TASK_KIND_STANDING
         },
 
         {
             "task_name": "Prepare role-specific topics",
             "description": "Review key skills and topics relevant to the role.",
-            "priority": TaskPriority.MEDIUM
+            "priority": TaskPriority.MEDIUM,
+            "kind": TASK_KIND_STANDING
         }
     ],
 
@@ -106,19 +115,22 @@ TASK_RULES = {
         {
             "task_name": "Review the offer details",
             "description": "Read the offer letter carefully including salary, benefits, and equity.",
-            "priority": TaskPriority.HIGH
+            "priority": TaskPriority.HIGH,
+            "kind": TASK_KIND_STANDING
         },
 
         {
             "task_name": "Respond by the deadline",
             "description": "Send your decision before the offer expiration date.",
-            "priority": TaskPriority.HIGH
+            "priority": TaskPriority.HIGH,
+            "kind": TASK_KIND_RESPONSE
         },
 
         {
             "task_name": "Research compensation benchmarks",
             "description": "Compare the offer against market rates for the role and location.",
-            "priority": TaskPriority.MEDIUM
+            "priority": TaskPriority.MEDIUM,
+            "kind": TASK_KIND_STANDING
         }
     ],
 
@@ -126,22 +138,58 @@ TASK_RULES = {
         {
             "task_name": "Confirm the new interview time",
             "description": "Reply to confirm or propose an alternative time.",
-            "priority": TaskPriority.HIGH
+            "priority": TaskPriority.HIGH,
+            "kind": TASK_KIND_RESPONSE
         },
 
         {
             "task_name": "Update your calendar",
             "description": "Block the new interview time and set a reminder.",
-            "priority": TaskPriority.MEDIUM
+            "priority": TaskPriority.MEDIUM,
+            "kind": TASK_KIND_STANDING
         }
     ]
 }
 
 
+# ≈≈≈≈ due date parsing ≈≈≈≈
+# Only parse deadlines that can be resolved safely.
+# Relative dates are refused because Message.created_at is paste time, not send time;
+# the original text still stays in Task.due_text, so only sorting is lost.
+# Slash dates are also refused because formats like 11/08/2026 are ambiguous.
+DUE_DATE_FORMATS = (
+    "%B %d, %Y",   # August 11, 2026
+    "%b %d, %Y",   # Aug 11, 2026
+    "%d %B %Y",    # 11 August 2026
+    "%d %b %Y",    # 11 Aug 2026
+    "%Y-%m-%d",    # 2026-08-11
+    "%B %d",       # August 11   <- year inferred, see _parse_due_date
+    "%b %d",       # Aug 11
+    "%d %B",       # 11 August
+    "%d %b",       # 11 Aug
+)
+
+# Store date-only deadlines at noon UTC, not midnight.
+# localtime.js converts timestamps to the browser timezone, so midnight UTC can
+# display as the previous day west of UTC. Noon preserves the stated date across
+# roughly ±11 hours of timezone offset.
+DUE_DATE_HOUR_UTC = 12
+
+# Leading prepositions stripped before parsing, so "by August 11" and
+# "before 11 Aug" reach strptime as bare dates.
+_DUE_PREFIX_RE = re.compile(r"^(by|before|on|due|no later than)\s+", re.IGNORECASE)
+
+# Strip a weekday when it names an absolute date, e.g. "Tuesday, August 11".
+# A bare weekday is still refused: stripping "Tuesday" leaves nothing to parse,
+# so it cannot be guessed as a relative date.
+_DUE_WEEKDAY_RE = re.compile(
+    r"^(mon|tues|wednes|thurs|fri|satur|sun)day,?\s+", re.IGNORECASE
+)
+
+
 # ≈≈≈≈ guidance stage rules ≈≈≈≈
 # What to produce for each category, and which moment in the process to write for.
-# Keys are the six classes the model can emit — there is no "application_received",
-# so a confirmation lands on follow_up at best.
+# Keys are the seven categories the model can emit.
 @dataclass(frozen=True)
 class GuidancePolicy:
     prep: bool
@@ -449,7 +497,9 @@ def run_message_analysis(message: Message) -> None:
         tools_used.append("ml_service")
     if llm_ran:
         tools_used.append("llm_service")
-    if final_category in TASK_RULES:
+    # Tasks now come from the email's own actions as well as the category
+    # defaults, so a category with no TASK_RULES entry can still generate them.
+    if final_category in TASK_RULES or details.get("action_items"):
         tools_used.append("task_generator")
 
     # ── single transaction: AnalysisResult + Tasks + AgentRun + Notification + status ──
@@ -465,6 +515,116 @@ def run_message_analysis(message: Message) -> None:
 
 
 # ≈≈≈≈ Private Helpers ≈≈≈≈
+
+def _parse_due_date(due_text, reference):
+    """
+    Parse a stated deadline into a datetime, or return None.
+
+    Returns None far more often than it returns a date, and that is the point: a
+    NULL due_date renders as no date, while a wrong one silently misinforms.
+    See DUE_DATE_FORMATS for why relative and slash forms are refused outright.
+
+    The ONE inference made here is the year on a year-less date such as
+    "August 11": it resolves to the next occurrence on or after `reference`,
+    within twelve months. That is the reading a human gives it, and it is
+    bounded. Everything else is refused rather than guessed.
+
+    Comparison is on .date() rather than the full datetime because
+    Message.created_at can come back naive from SQLite while `resolved` is
+    UTC-aware, and comparing aware to naive raises.
+    """
+    if not due_text:
+        return None
+
+    cleaned = _DUE_PREFIX_RE.sub("", due_text.strip().strip(".,")).strip()
+    cleaned = _DUE_WEEKDAY_RE.sub("", cleaned).strip().strip(",")
+    if not cleaned:
+        return None
+
+    for fmt in DUE_DATE_FORMATS:
+        try:
+            parsed = datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+
+        if "%Y" in fmt:
+            resolved = parsed
+        else:
+            resolved = parsed.replace(year=reference.year)
+            if resolved.date() < reference.date():
+                try:
+                    resolved = resolved.replace(year=reference.year + 1)
+                except ValueError:
+                    return None     # 29 February rolling into a non-leap year
+
+        return resolved.replace(
+            hour=DUE_DATE_HOUR_UTC, minute=0, second=0, microsecond=0, tzinfo=UTC
+        )
+
+    return None
+
+
+def _build_tasks(message, category, details):
+    """
+    Build the task rows for one analysed message, from two sources in order.
+
+    1. ACTIONS THE EMAIL ACTUALLY STATED, from the extraction. Specific ("Reply
+       with a preferred time", "Send a GitHub link") and carrying the sender's
+       own deadline. CATEGORY-INDEPENDENT: an application acknowledgement that
+       states a real deadline produces a task even though application_received
+       has no TASK_RULES entry. The missing entry was about defaults, not about
+       what an email is allowed to say.
+
+    2. CATEGORY DEFAULTS from TASK_RULES, split by kind. RESPONSE defaults are
+       suppressed when (1) produced anything; STANDING defaults always fire.
+
+    Returns unsaved rows — the caller adds them to the pipeline's single
+    transaction.
+    """
+    reference = message.created_at or datetime.now(UTC)
+    tasks, seen = [], set()
+
+    for item in details.get("action_items") or []:
+        name = (item.get("action") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:                     # models repeat themselves
+            continue
+        seen.add(key)
+
+        due_text = item.get("due_text")
+        tasks.append(Task(
+            message_id=message.id,
+            task_name=name,
+            description=("Requested in the email."
+                         + (f" Stated deadline: {due_text}." if due_text else "")),
+            due_text=due_text,
+            due_date=_parse_due_date(due_text, reference),
+            # A stated deadline is the strongest signal the sender gave about
+            # what matters. Nothing finer is available per-action — `urgency` is
+            # a whole-message label.
+            priority=TaskPriority.HIGH if due_text else TaskPriority.MEDIUM,
+            is_completed=False,
+        ))
+
+    from_email = len(tasks)
+
+    for rule in TASK_RULES.get(category, []):
+        if rule["kind"] == TASK_KIND_RESPONSE and from_email:
+            continue
+        if rule["task_name"].lower() in seen:
+            continue
+        tasks.append(Task(
+            message_id=message.id,
+            task_name=rule["task_name"],
+            description=rule["description"],
+            priority=rule["priority"],
+            is_completed=False,
+        ))
+
+    return tasks[:MAX_TASKS_PER_MESSAGE]
+
 
 def _save_pipeline_results(
         message: Message,
@@ -523,23 +683,26 @@ def _save_pipeline_results(
         db.session.add(analysis)
 
         # ≈≈≈≈ tasks ≈≈≈≈
-        if final_category in TASK_RULES:
-            for rule in TASK_RULES[final_category]:
-                task = Task(
-                    message_id=message.id,
-                    task_name=rule["task_name"],
-                    description=rule["description"],
-                    priority=rule["priority"],
-                    is_completed=False,
-                )
-                db.session.add(task)
+        tasks = _build_tasks(message, final_category, details)
+        for task in tasks:
+            db.session.add(task)
+
+        if tasks:
+            stated = sum(1 for t in tasks if t.due_text)
+            dated  = sum(1 for t in tasks if t.due_date)
+            # stated minus dated is _parse_due_date's refusal rate — the number
+            # to watch if DUE_DATE_FORMATS turns out too narrow in practice.
             logger.info(
-                "Generated %d tasks for message %s",
-                len(TASK_RULES[final_category]),
+                "Generated %d tasks for message %s (%d stated a deadline, %d parsed)",
+                len(tasks),
                 message.id,
+                stated,
+                dated,
                 extra={
                     "message_id": message.id,
-                    "task_count": len(TASK_RULES[final_category])
+                    "task_count": len(tasks),
+                    "stated_deadline_count": stated,
+                    "parsed_due_date_count": dated
                 }
             )
 
@@ -701,7 +864,7 @@ def _inherit_job_field(
         current_category: Optional[str],
 ) -> Optional[str]:
     """
-    Context enrichment — if job_field is general, check if we've
+    Context enrichment — if job_field is unclassified, check whether we've
     seen this sender before with a known field in a similar category.
 
     Only inherits from similar category groups to avoid wrong context.

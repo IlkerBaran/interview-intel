@@ -379,6 +379,14 @@
                     {{ localtime(task.due_date, "month_day_year") }}
                 </span>
             </div>
+            {% elif task.due_text %}
+            <div class="detail-row">
+                <span class="detail-label">Due</span>
+                {# The email stated a deadline that could not be parsed into a date
+                   (relative, or ambiguous). Show its own words and nothing more —
+                   inventing a date here is what _parse_due_date exists to avoid. #}
+                <span class="detail-value">{{ task.due_text }}</span>
+            </div>
             {% endif %}
 
         </div>

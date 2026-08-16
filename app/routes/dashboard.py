@@ -68,7 +68,14 @@ def index():
             Message.status != MessageStatus.ARCHIVED,
             Task.is_completed.is_(False)
         )
-        .order_by(Task.created_at.desc())
+        # Overdue and soonest-due first, undated last, newest-first within each
+        # group. Backward compatible: when every task is undated the first two
+        # keys tie and this degrades exactly to the previous created_at ordering.
+        .order_by(
+            Task.due_date.is_(None),   # False (0) sorts first -> dated tasks lead
+            Task.due_date.asc(),
+            Task.created_at.desc()
+        )
         .limit(8)
     ).scalars().all()
 

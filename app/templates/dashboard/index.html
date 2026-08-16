@@ -389,8 +389,21 @@
                            class="message-item">
 
                             <div class="message-item-top">
+                                {# Same headline chain as messages/index.html: the
+                                   analysed role/company when it exists, the user's own
+                                   subject next, the date last. Kept identical so an
+                                   email does not read differently in the two lists. #}
                                 <span class="message-subject">
-                                    {{ message.subject or "No subject" }}
+                                    {% if message.analysis_result and message.analysis_result.role_title %}
+                                        {{ message.analysis_result.role_title }}
+                                        {% if message.analysis_result.company_name %}
+                                            — {{ message.analysis_result.company_name }}
+                                        {% endif %}
+                                    {% elif message.subject %}
+                                        {{ message.subject }}
+                                    {% else %}
+                                        Email — {{ localtime(message.created_at, "date_short") }}
+                                    {% endif %}
                                 </span>
                                 <span class="message-date">
                                     {{ localtime(message.created_at, "date_short") }}
@@ -456,6 +469,22 @@
                                     {% if task.message and task.message.analysis_result %}
                                         <span style="font-size: 0.75rem; color: #a89880;">
                                             {{ task.message.analysis_result.company_name or "Unknown company" }}
+                                        </span>
+                                    {% endif %}
+
+                                    {# Mirrors the task list: a parsed date can be
+                                       overdue, an unparsed one shows the email's own
+                                       wording and never can. #}
+                                    {% if task.due_date %}
+                                        {% set overdue = not task.is_completed and task.due_date < utc_now %}
+                                        <span style="font-size: 0.72rem; font-weight: 600;
+                                                     color: {{ '#dc2626' if overdue else '#746857' }};">
+                                            {% if overdue %}Overdue ·{% endif %}
+                                            Due {{ localtime(task.due_date, "month_day_year") }}
+                                        </span>
+                                    {% elif task.due_text %}
+                                        <span style="font-size: 0.72rem; font-weight: 600; color: #746857;">
+                                            Due {{ task.due_text }}
                                         </span>
                                     {% endif %}
                                 </div>

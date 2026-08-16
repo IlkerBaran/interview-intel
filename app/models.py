@@ -499,6 +499,9 @@ class Task(db.Model):
 
     task_name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
+    # Keep the deadline text exactly as stated in the email.
+    # Only set due_date when it can be parsed without guessing.
+    due_text = db.Column(db.String(120))
     due_date = db.Column(db.DateTime(timezone=True))
     priority = db.Column(db.String(20), nullable=False, default=TaskPriority.MEDIUM, index=True)
     is_completed = db.Column(db.Boolean, nullable=False, index=True, default=False)
