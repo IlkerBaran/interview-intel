@@ -1,8 +1,25 @@
+from datetime import UTC, datetime
 from functools import wraps
 from urllib.parse import urlsplit
 
 from flask import redirect, url_for, flash, request
 from flask_login import current_user
+
+
+def ensure_aware(dt: datetime | None) -> datetime | None:
+    """
+    Return `dt` as a timezone-aware UTC datetime, or None.
+
+    SQLite drops timezone offsets when storing datetimes, so UTC values may come
+    back naive. Re-attach UTC before comparing them with `datetime.now(UTC)`.
+
+    PostgreSQL already returns timezone-aware values, so those pass through unchanged.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
 
 
 def verified_required(f):

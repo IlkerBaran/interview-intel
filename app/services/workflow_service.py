@@ -25,6 +25,7 @@ import anthropic
 from app.services.ml_service import ml_service, JOB_FIELD_UNCLASSIFIED
 from app.services.llm_service import llm_service, TRANSIENT_LLM_ERRORS
 from app.services.preprocess_language import normalize_text
+from app.utils import ensure_aware
 
 # Safe at module level: quota_service imports only extensions + models, so there is
 # no workflow_service <-> quota_service cycle (unlike celery_tasks, which must stay
@@ -529,9 +530,9 @@ def _parse_due_date(due_text, reference):
     within twelve months. That is the reading a human gives it, and it is
     bounded. Everything else is refused rather than guessed.
 
-    Comparison is on .date() rather than the full datetime because
-    Message.created_at can come back naive from SQLite while `resolved` is
-    UTC-aware, and comparing aware to naive raises.
+    Comparison is on .date() because choosing the year is a calendar-day question.
+    `reference` is normalised to UTC-aware by the caller (see _build_tasks), so the
+    naive/aware mix that would otherwise raise here cannot occur.
     """
     if not due_text:
         return None
@@ -581,7 +582,9 @@ def _build_tasks(message, category, details):
     Returns unsaved rows — the caller adds them to the pipeline's single
     transaction.
     """
-    reference = message.created_at or datetime.now(UTC)
+    # created_at comes back naive from SQLite; normalise it here so `reference`
+    # is comparable to any aware datetime, not just via .date().
+    reference = ensure_aware(message.created_at) or datetime.now(UTC)
     tasks, seen = [], set()
 
     for item in details.get("action_items") or []:

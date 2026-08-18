@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, UTC
+from datetime import UTC
 
 from flask import Flask, has_request_context
 from flask_login import current_user
@@ -149,22 +149,6 @@ def create_app():
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
         return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
-    @app.context_processor
-    def inject_utc_now():
-        """
-        Expose the current UTC instant so templates can mark a task overdue.
-
-        Deliberately trivial and unguarded, unlike the two processors below: it
-        touches no database and no request context, so it cannot fail the render
-        or break email templates rendered inside a Celery worker.
-
-        Timezone-AWARE, because Task.due_date is stored aware (noon UTC, see
-        workflow_service.DUE_DATE_HOUR_UTC). Comparing it against a naive value
-        would raise inside the template.
-        """
-        return {"utc_now": datetime.now(UTC)}
 
 
     @app.context_processor

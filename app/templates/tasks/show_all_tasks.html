@@ -409,7 +409,7 @@
                                unparsed one renders the email's own words ("before the
                                call") and never can. Both beat showing nothing. #}
                             {% if task.due_date %}
-                                {% set overdue = not task.is_completed and task.due_date < utc_now %}
+                                {% set overdue = task.is_overdue %}
                                 <span class="task-due {% if overdue %}overdue{% endif %}">
                                     {% if overdue %}Overdue ·{% endif %}
                                     Due {{ localtime(task.due_date, "month_day_year") }}

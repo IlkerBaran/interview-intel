@@ -1,5 +1,6 @@
 from datetime import datetime, UTC
 from .extensions import db
+from .utils import ensure_aware
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from enum import Enum
@@ -517,6 +518,20 @@ class Task(db.Model):
     message = db.relationship(
         "Message",
         back_populates="tasks")
+
+    @property
+    def is_overdue(self) -> bool:
+        """
+        True if the task is incomplete and its due date has passed.
+
+        This is the single source of truth for overdue status across the app.
+        `ensure_aware()` restores UTC when SQLite returns a naive due date.
+
+        Tasks with no due date are never considered overdue.
+        """
+        if self.due_date is None or self.is_completed:
+            return False
+        return ensure_aware(self.due_date) < datetime.now(UTC)
 
     # debugging purpose for this table
     def __repr__(self):

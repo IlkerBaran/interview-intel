@@ -476,7 +476,7 @@
                                        overdue, an unparsed one shows the email's own
                                        wording and never can. #}
                                     {% if task.due_date %}
-                                        {% set overdue = not task.is_completed and task.due_date < utc_now %}
+                                        {% set overdue = task.is_overdue %}
                                         <span style="font-size: 0.72rem; font-weight: 600;
                                                      color: {{ '#dc2626' if overdue else '#746857' }};">
                                             {% if overdue %}Overdue ·{% endif %}
