@@ -522,16 +522,28 @@ class Task(db.Model):
     @property
     def is_overdue(self) -> bool:
         """
-        True if the task is incomplete and its due date has passed.
+        True if the task is incomplete and its due day has already passed.
 
-        This is the single source of truth for overdue status across the app.
-        `ensure_aware()` restores UTC when SQLite returns a naive due date.
+        This is the single source of truth for overdue status across the app;
+        templates read this property rather than comparing due_date themselves.
 
-        Tasks with no due date are never considered overdue.
+        Compare calendar dates, not instants. An email gives a due day
+        ("confirm by August 18"), not a time, so _parse_due_date stores that day
+        at noon UTC (workflow_service.DUE_DATE_HOUR_UTC) as an arbitrary anchor.
+        Comparing the stored value as an instant would mark the task overdue at
+        noon on its due day. A task remains due for the entire day and becomes
+        overdue on the following day.
+
+        Normalize both sides to UTC before taking .date() so the result does not
+        depend on the server's local timezone. ensure_aware() restores UTC when
+        SQLite returns a naive due date.
+
+        Tasks with no due date are never overdue.
         """
         if self.due_date is None or self.is_completed:
             return False
-        return ensure_aware(self.due_date) < datetime.now(UTC)
+        due_day = ensure_aware(self.due_date).astimezone(UTC).date()
+        return due_day < datetime.now(UTC).date()
 
     # debugging purpose for this table
     def __repr__(self):
