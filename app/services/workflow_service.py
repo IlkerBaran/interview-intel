@@ -176,6 +176,17 @@ DUE_DATE_FORMATS = (
 # roughly ±11 hours of timezone offset.
 DUE_DATE_HOUR_UTC = 12
 
+# Maximum age for a year-less due date to stay in the current year.
+#
+# A recently passed date such as "18 August" pasted on the 19th is more
+# plausibly an overdue deadline than one eleven months away, so keep it in the
+# current year. Beyond this window, the year is too ambiguous to infer safely;
+# refuse the parsed date and preserve the original wording in Task.due_text.
+#
+# 45 days keeps inference well inside the point where past and future readings
+# become comparably plausible.
+DUE_DATE_BACKWARD_GRACE_DAYS = 45
+
 # Leading prepositions stripped before parsing, so "by August 11" and
 # "before 11 Aug" reach strptime as bare dates.
 _DUE_PREFIX_RE = re.compile(r"^(by|before|on|due|no later than)\s+", re.IGNORECASE)
@@ -526,9 +537,21 @@ def _parse_due_date(due_text, reference):
     See DUE_DATE_FORMATS for why relative and slash forms are refused outright.
 
     The ONE inference made here is the year on a year-less date such as
-    "August 11": it resolves to the next occurrence on or after `reference`,
-    within twelve months. That is the reading a human gives it, and it is
-    bounded. Everything else is refused rather than guessed.
+    "August 11": it takes `reference`'s year, and is refused outright once that
+    lands more than DUE_DATE_BACKWARD_GRACE_DAYS in the past. It never rolls
+    forward into the following year. Everything else is refused rather than
+    guessed.
+
+    Rolling forward was the previous rule, and it read a deadline of yesterday as
+    one eleven months out — a confident wrong date, which this module exists to
+    avoid. The anchor cannot support that inference: `created_at` is paste time,
+    not send time (see DUE_DATE_FORMATS), so "which August" is exactly the
+    question it cannot answer.
+
+    A stated weekday is checked against the resolved date and disagreement is
+    refused. "Monday 18 August" where the 18th is a Tuesday describes no real
+    day, and picking one of the two halves would be inventing the sender's
+    intent.
 
     Comparison is on .date() because choosing the year is a calendar-day question.
     `reference` is normalised to UTC-aware by the caller (see _build_tasks), so the
@@ -538,6 +561,13 @@ def _parse_due_date(due_text, reference):
         return None
 
     cleaned = _DUE_PREFIX_RE.sub("", due_text.strip().strip(".,")).strip()
+
+    # Capture the weekday rather than only removing it: it is evidence about
+    # which day the sender meant, and the only signal that can catch a date the
+    # email states inconsistently.
+    weekday_match = _DUE_WEEKDAY_RE.match(cleaned)
+    stated_weekday = weekday_match.group(1).lower() + "day" if weekday_match else None
+
     cleaned = _DUE_WEEKDAY_RE.sub("", cleaned).strip().strip(",")
     if not cleaned:
         return None
@@ -551,12 +581,18 @@ def _parse_due_date(due_text, reference):
         if "%Y" in fmt:
             resolved = parsed
         else:
+            # replace() cannot raise here: a year-less 29 February never reaches
+            # this point, because strptime's default year (1900) is not a leap
+            # year and the parse above already failed.
             resolved = parsed.replace(year=reference.year)
-            if resolved.date() < reference.date():
-                try:
-                    resolved = resolved.replace(year=reference.year + 1)
-                except ValueError:
-                    return None     # 29 February rolling into a non-leap year
+            days_past = (reference.date() - resolved.date()).days
+            if days_past > DUE_DATE_BACKWARD_GRACE_DAYS:
+                return None
+
+        # Applies to explicit-year dates too — "Monday 18 August 2027" is just as
+        # self-contradictory, and just as unsafe to resolve.
+        if stated_weekday and resolved.strftime("%A").lower() != stated_weekday:
+            return None
 
         return resolved.replace(
             hour=DUE_DATE_HOUR_UTC, minute=0, second=0, microsecond=0, tzinfo=UTC
