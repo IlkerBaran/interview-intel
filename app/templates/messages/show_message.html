@@ -215,6 +215,19 @@
         color: #a89880;
     }
 
+    .task-due {
+        font-size: 0.72rem;
+        color: #746857;
+        font-weight: 600;
+    }
+
+    /* Overdue is the first such state this app has had. Colour alone is not the
+       signal — the word "Overdue" carries it for anyone who cannot separate the
+       hue from the surrounding muted text. */
+    .task-due.overdue {
+        color: #dc2626;
+    }
+
     /* ── RAW EMAIL ── */
     .raw-email {
         font-size: 0.825rem;
@@ -585,6 +598,19 @@
                         <span class="badge {% if task.priority == 'high' %}badge-orange{% elif task.priority == 'medium' %}badge-blue{% else %}badge-gray{% endif %}">
                             {{ task.priority | title }}
                         </span>
+                        {#- Mirrors the task list and the dashboard: a parsed date
+                            renders localised and can be overdue; an unparsed one
+                            renders the email's own words ("before the call") and
+                            never can. Both beat showing nothing. #}
+                        {%- if task.due_date %}
+                        {% set overdue = task.is_overdue %}
+                        <span class="task-due {% if overdue %}overdue{% endif %}">
+                            {% if overdue %}Overdue ·{% endif %}
+                            Due {{ localtime(task.due_date, "month_day_year") }}
+                        </span>
+                        {%- elif task.due_text %}
+                        <span class="task-due">Due {{ task.due_text }}</span>
+                        {%- endif %}
                     </li>
                 {% endfor %}
             </ul>
