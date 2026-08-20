@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "samples": [
+    {
+      "demo": {
+        "slug": "interview-invitation",
+        "label": "Interview invitation",
+        "caption": "A full analysis with interview details, preparation guidance, suggested questions, a reply draft, and extracted tasks."
+      },
+      "message": {
+        "status": "completed",
+        "subject": "Backend Engineer — technical interview",
+        "sender_email": "susanmiller@example.com",
+        "created_at": "2026-08-20T19:26:01.178109Z",
+        "raw_text": "Backend Engineer — technical interview\r\n\r\nHi Adam,\r\n\r\nGood news — the team enjoyed reviewing your application and would like to invite you to the next stage of the process for the Backend Engineer role.\r\n\r\nWe’d like to schedule a 75-minute technical interview over Zoom with two of our platform engineers, Priya and Dan. The interview will be split between system design and live coding. We use Go, Postgres, and Kafka quite heavily, so you can expect some of the discussion to focus on those areas.\r\n\r\nWe’ve pencilled you in for Thursday, 27 August at 11:00 AM PT. Please confirm your availability by Tuesday, 25 August so I can send over the calendar invite. If that time doesn’t work, send me two or three alternatives and I’ll see what we can arrange.\r\n\r\nAlso, if you have a GitHub profile, portfolio, or anything else you’d like the panel to review beforehand, feel free to send it over.\r\n\r\nLooking forward to hearing from you.\r\n\r\nBest,\r\nSusan Miller\r\nTechnical Recruiting\r\nA.B.C Data",
+        "note": null,
+        "analysis_result": {
+          "message_category": "interview_invitation",
+          "category_confidence": 0.42,
+          "urgency_level": "high",
+          "urgency_confidence": 0.49,
+          "job_field": "software_engineering",
+          "job_field_confidence": 0.271,
+          "company_name": "A.B.C Data",
+          "role_title": "Backend Engineer",
+          "interview_stage": "technical interview",
+          "interview_format": "75-minute technical interview over Zoom with two platform engineers",
+          "date_text": "Thursday, 27 August",
+          "time_text": "11:00 AM PT",
+          "location_text": "Zoom",
+          "processed_at": "2026-08-20T19:26:16.349968Z",
+          "preparation_guidance": "# Interview Prep: Backend Engineer at A.B.C Data\n\n**Timeline:** You have 7 days. Confirm availability by Tuesday, 25 August.\n\n## Immediate Actions\n- **Confirm the slot** with Susan by Tuesday (or suggest alternatives if needed)\n- **Send portfolio/GitHub** if you have quality work to show—this gives interviewers context before the call\n- **Test your setup:** Zoom, internet, quiet space, second monitor if possible for coding\n\n## Technical Focus (75 minutes: system design + live coding)\n\n**Go, Postgres, Kafka** are explicitly mentioned. Prioritize:\n- **Go fundamentals:** goroutines, channels, error handling, interfaces\n- **Postgres:** indexing, query optimization, transactions, connection pooling\n- **Kafka:** producers/consumers, partitioning, offset management, at-least-once vs exactly-once semantics\n\n**System design:** Expect a real-world backend problem. Be ready to discuss:\n- Data modeling and schema design\n- Scalability trade-offs (consistency, availability, throughput)\n- How Go, Postgres, and Kafka fit into your solution\n\n**Live coding:** Write clean, idiomatic Go. Think aloud. Handle edge cases.\n\n## Company Research\n- Review A.B.C Data's tech blog, GitHub, or job postings for architectural patterns\n- Understand their scale/domain—this informs design discussions\n\n## During the Interview\n- Ask clarifying questions before diving into design\n- Explain your reasoning, not just your code\n- Be honest about",
+          "suggested_questions": "# Questions for Backend Engineer Technical Interview at A.B.C Data\n\n1. Can you walk me through the architecture of your backend systems and how services communicate with each other—are you using microservices, monolithic, or a hybrid approach?\n\n2. What are the primary performance bottlenecks you've encountered in your data pipeline, and how does this role contribute to solving them?\n\n3. How do you approach database optimization and scaling at A.B.C Data—what's your strategy for handling large datasets, and what technologies are you currently using?\n\n4. What does your deployment and CI/CD process look like, and what level of ownership would I have in shipping code to production?\n\n5. Can you describe a recent backend challenge your team faced and how you solved it—what would success look like for this role in addressing similar issues?",
+          "reply_suggestions": "Subject: Re: Backend Engineer — technical interview\n\nHi Susan,\n\nThank you for the invitation — I'm excited to move forward with the technical interview for the Backend Engineer role at A.B.C Data.\n\nRegarding the scheduled time of Thursday, 27 August at 11:00 AM PT: [please confirm whether this time works for you, or provide two or three alternative times if needed].\n\nI appreciate you letting me know the interview will cover system design and live coding with a focus on Go, Postgres, and Kafka. I'll prepare accordingly.\n\nI'll also [decide whether you'd like to share a GitHub profile, portfolio, or other materials, and include links if applicable].\n\nI look forward to speaking with Priya and Dan.\n\nBest regards,\n[Your name]",
+          "role_summary": "# Backend Engineer at A.B.C Data\n\nA.B.C Data is a software engineering company seeking a Backend Engineer to work with their platform team on systems built with Go, Postgres, and Kafka. The role involves designing and building scalable backend infrastructure and services. Candidates should expect a 75-minute technical interview covering system design and live coding with two platform engineers."
+        },
+        "tasks": [
+          {
+            "task_name": "Confirm your availability",
+            "priority": "high",
+            "is_completed": false,
+            "due_date": "2026-08-25T12:00:00Z",
+            "due_text": "by Tuesday, 25 August"
+          },
+          {
+            "task_name": "Send two or three alternative times if needed",
+            "priority": "medium",
+            "is_completed": false,
+            "due_date": null,
+            "due_text": null
+          },
+          {
+            "task_name": "Send GitHub profile, portfolio, or other materials for review",
+            "priority": "medium",
+            "is_completed": false,
+            "due_date": null,
+            "due_text": null
+          },
+          {
+            "task_name": "Research the company",
+            "priority": "high",
+            "is_completed": false,
+            "due_date": null,
+            "due_text": null
+          },
+          {
+            "task_name": "Prepare role-specific topics",
+            "priority": "medium",
+            "is_completed": false,
+            "due_date": null,
+            "due_text": null
+          }
+        ]
+      }
+    },
+    {
+      "demo": {
+        "slug": "rejection",
+        "label": "Rejection",
+        "caption": "A sparse analysis that avoids generating unnecessary preparation guidance, questions, or a reply."
+      },
+      "message": {
+        "status": "completed",
+        "subject": "Your application — SYNS Group",
+        "sender_email": "nadiaosei@example.com",
+        "created_at": "2026-08-20T19:32:50.038105Z",
+        "raw_text": "Subject: Your application — SYNS Group\r\n\r\nHi Arthur,\r\n\r\nThanks for taking the time to speak with the platform team last week.\r\n\r\nAfter careful consideration, we’ve decided to move forward with another candidate for the position.\r\n\r\nWe really appreciated the time and effort you put into the process, and the team had positive feedback about your take-home exercise. It was a competitive process, and we enjoyed learning more about your experience.\r\n\r\nWe're likely to be hiring again for something similar in Q1, so I'd\r\nencourage you to keep an eye out.\r\n\r\nThank you again for your interest in SYNS Group, and we wish you all the best in your job search.\r\n\r\nbest,\r\nNadia Osei\r\nTalent Partner, SYNS Group",
+        "note": null,
+        "analysis_result": {
+          "message_category": "rejection",
+          "category_confidence": 0.396,
+          "urgency_level": "low",
+          "urgency_confidence": 0.411,
+          "job_field": "unclassified",
+          "job_field_confidence": null,
+          "company_name": "SYNS Group",
+          "role_title": null,
+          "interview_stage": null,
+          "interview_format": null,
+          "date_text": null,
+          "time_text": null,
+          "location_text": null,
+          "processed_at": "2026-08-20T19:32:53.687726Z",
+          "preparation_guidance": null,
+          "suggested_questions": null,
+          "reply_suggestions": null,
+          "role_summary": "# Role Summary\n\nBased on the email, this appears to be a technical or platform-focused position at SYNS Group, likely involving a take-home exercise assessment. While specific responsibilities aren't detailed in the rejection email, the candidate can expect a competitive hiring process that includes technical evaluation and team interviews. SYNS Group appears to be actively hiring for similar roles in Q1, suggesting this is a growing tech-oriented company with regular recruitment cycles."
+        },
+        "tasks": []
+      }
+    },
+    {
+      "demo": {
+        "slug": "application-received",
+        "label": "Application received",
+        "caption": "A lighter analysis with next-step guidance and extracted application tasks."
+      },
+      "message": {
+        "status": "completed",
+        "subject": "T.D. Robotics — application received",
+        "sender_email": null,
+        "created_at": "2026-08-20T19:30:57.338645Z",
+        "raw_text": "Subject: T.D. Robotics — application received\r\n\r\nHi John,\r\n\r\nThanks for applying for the Software Engineer, Platform role. Your\r\napplication has been received and is with the recruiting team.\r\n\r\nBefore we get to reviewing, there are two things we need from you:\r\n\r\n1. The coding assessment — the link's in your candidate portal. Please\r\ncomplete it within 7 days. It's about 90 minutes and you can save and\r\ncome back to it.\r\n\r\n2. If anything's changed on your resume since you applied, upload an updated\r\ncopy by 5 September.\r\n\r\nOnce both are in someone will be in touch about next steps. Nothing else\r\nneeded from you for now.\r\n\r\nRegards,\r\nRecruiting Team\r\nT.D. Robotics",
+        "note": null,
+        "analysis_result": {
+          "message_category": "application_received",
+          "category_confidence": 0.385,
+          "urgency_level": "low",
+          "urgency_confidence": 0.429,
+          "job_field": "software_engineering",
+          "job_field_confidence": 0.191,
+          "company_name": "T.D. Robotics",
+          "role_title": "Software Engineer, Platform",
+          "interview_stage": null,
+          "interview_format": null,
+          "date_text": null,
+          "time_text": null,
+          "location_text": null,
+          "processed_at": "2026-08-20T19:31:09.810780Z",
+          "preparation_guidance": "# Next Steps: Before Your Coding Assessment\n\nYou have two immediate tasks: complete the coding assessment within 7 days and update your resume if needed by September 5th. Use this window strategically.\n\n## Prepare for the Coding Assessment\n\nThe 90-minute assessment is your first real evaluation. Focus on:\n\n- **Core data structures & algorithms** — arrays, linked lists, trees, graphs, hash tables, sorting, searching\n- **Clean, readable code** — the assessor will evaluate both correctness and style\n- **Problem-solving approach** — think aloud, handle edge cases, optimize when possible\n- **Language proficiency** — use whichever language you're strongest in; they care about logic, not syntax\n\nSince you can save and return, don't rush. Test your solutions thoroughly before submitting.\n\n## Research T.D. Robotics\n\nUnderstand what they build:\n- Visit their website and recent news/press releases\n- Look for their tech stack, product focus, and engineering challenges\n- Check Glassdoor, LinkedIn, and engineering blogs for insights into their culture and technical priorities\n- Understand how \"Platform\" engineering fits their business — are they building infrastructure, APIs, internal tools, or developer experience?\n\nThis context helps you speak intelligently if a recruiter calls and prepares you for later interview rounds.\n\n## Get Your Story Straight\n\nBefore any call comes:\n- Review your resume and be ready to discuss every project with specific metrics (performance improvements, scale, impact)\n- Prepare 2–3 concrete examples of problems you've solved, challenges you've overcome, and what you",
+          "suggested_questions": null,
+          "reply_suggestions": null,
+          "role_summary": "# Software Engineer, Platform at T.D. Robotics\n\nT.D. Robotics is seeking a Software Engineer for their Platform team to develop and maintain core software infrastructure. As a robotics company, they require strong technical expertise to support their engineering operations. Candidates should expect a structured hiring process including a 90-minute coding assessment and resume verification before proceeding to interviews."
+        },
+        "tasks": [
+          {
+            "task_name": "Complete the coding assessment",
+            "priority": "high",
+            "is_completed": false,
+            "due_date": null,
+            "due_text": "within 7 days"
+          },
+          {
+            "task_name": "Upload updated resume if changed",
+            "priority": "high",
+            "is_completed": false,
+            "due_date": "2026-09-05T12:00:00Z",
+            "due_text": "by 5 September"
+          }
+        ]
+      }
+    }
+  ]
+}
