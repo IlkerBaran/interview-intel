@@ -13,7 +13,7 @@ Every endpoint in this app was unthrottled. Four categories mattered:
   are mail-bomb vectors, and the damage is deliverability and domain reputation — harder to
   undo than a bill.
 - **Routes that cost money.** A message submission fires one extraction call plus five
-  enrichments against the Anthropic API, with the full email text embedded in four of the
+  enrichments against the Anthropic API, with the full email text embedded in five of the
   six prompts.
 - **Brute-force targets.** `login` has timing-attack mitigation but no attempt throttling.
 - **Unbounded reads and writes.** The data export builds the user's entire history in

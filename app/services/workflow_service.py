@@ -828,6 +828,12 @@ def _run_llm_enrichments(
 
     policy = GUIDANCE_POLICY.get(category, UNKNOWN_STAGE_POLICY)
 
+    # One clock for the whole run. The prep and reply prompts both print today's date —
+    # prep to pace the advice, reply to tell a passed deadline from a coming one — and
+    # reading the clock separately in each lets a run that crosses midnight date-stamp
+    # its two prompts differently.
+    today = datetime.now(UTC)
+
     calls = {}
 
     if policy.prep:
@@ -839,6 +845,8 @@ def _run_llm_enrichments(
             stage_note=policy.stage,
             date_text=date_text,
             time_text=time_text,
+            raw_text=normalized_text,
+            today=today,
         )
 
     if policy.questions:
@@ -855,6 +863,7 @@ def _run_llm_enrichments(
             category=category,
             role_title=role_title,
             company_name=company_name,
+            today=today,
         )
 
     # Always run: meaningful at every stage.
