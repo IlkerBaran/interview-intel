@@ -23,6 +23,17 @@ DEFAULT_LLM_TIMEOUT_SECONDS = 30.0  # Maximum time allowed for the full LLM requ
 DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS = 10.0  # Maximum time allowed just to establish the network connection
 DEFAULT_LLM_MAX_RETRIES = 0  # Disable Anthropic SDK retries. Celery will handle retries so we do not retry twice.
 
+# Output budget for generate_preparation_guidance.
+#
+# The prompt caps the answer at 250 words, so this limit should only provide enough
+# headroom for the model to finish naturally. At 350 tokens the Markdown formatting
+# made the token cap the real constraint, cutting responses off around 200 words.
+#
+# A typical compliant response needs roughly 440 tokens, so 650 leaves a reasonable
+# buffer without allowing unnecessarily long output. Billing is based on tokens
+# actually generated, not the maximum configured here.
+PREP_GUIDANCE_MAX_TOKENS = 650
+
 # LLM errors that are considered temporary and safe to retry.
 # These should be caught before catching anthropic.APIError,
 # because many of them inherit from Anthropic's generic APIError class.
@@ -384,7 +395,7 @@ Do not assume an interview has been scheduled unless the STAGE section says so.
 
 Max 250 words. Be practical and specific."""
 
-        return self._call(prompt, max_tokens=350)
+        return self._call(prompt, max_tokens=PREP_GUIDANCE_MAX_TOKENS)
 
     def suggest_candidate_questions(
         self,

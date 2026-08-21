@@ -47,6 +47,9 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")
 _BULLET_RE = re.compile(r"^\s*[-*+]\s+(.*)$")
 _ORDERED_RE = re.compile(r"^\s*\d+[.)]\s+(.*)$")
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+# A thematic break: three or more of the same marker alone on a line. The model uses
+# these between sections, and without this they rendered as a literal "---" paragraph.
+_HR_RE = re.compile(r"^\s*([-*_])(?:\s*\1){2,}\s*$")
 
 # The page owns h1 (the message title) and h2 (section headings), so model headings
 # start below those rather than competing with them.
@@ -117,6 +120,13 @@ def render_llm_text(text) -> Markup:
             _flush_list(list_items, out, list_ordered)
             level = min(_HEADING_BASE + len(heading.group(1)) - 1, _HEADING_MAX)
             out.append(f"<h{level}>{_inline(heading.group(2))}</h{level}>")
+            continue
+
+        # Before the bullet check: "- - -" is a rule, not a one-item list.
+        if _HR_RE.match(line):
+            _flush_paragraph(paragraph, out)
+            _flush_list(list_items, out, list_ordered)
+            out.append("<hr>")
             continue
 
         ordered = _ORDERED_RE.match(line)

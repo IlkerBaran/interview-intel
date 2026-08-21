@@ -54,7 +54,15 @@ from jinja2 import nodes  # noqa: E402
 
 
 SCHEMA_VERSION = 1
-TEMPLATE = "messages/show_message.html"
+# Every template that renders captured fixture data. Both are needed: the analysis
+# markup lives in the shared macros, and show_message.html keeps only the owner
+# chrome plus the page title. Scanning show_message.html alone made this preflight
+# pass vacuously — it saw 14 attributes instead of 36, and none of the
+# analysis_result fields the fixture exists to carry.
+TEMPLATES = (
+    "messages/show_message.html",
+    "messages/_analysis.html",
+)
 
 
 # ── Captured application payload ────────────────────────────────────────────
@@ -147,20 +155,17 @@ def template_attribute_inventory(app):
     access is discovered reliably. Template aliases such as `ar` and `task`
     are accounted for by check_schema_covers_template().
     """
-    source = app.jinja_env.loader.get_source(
-        app.jinja_env,
-        TEMPLATE,
-    )[0]
-
-    ast = app.jinja_env.parse(source)
-
     found = set()
 
-    for node in ast.find_all(nodes.Getattr):
-        path = _dotted_path(node)
+    for template in TEMPLATES:
+        source = app.jinja_env.loader.get_source(app.jinja_env, template)[0]
+        ast = app.jinja_env.parse(source)
 
-        if path:
-            found.add(f"{path[0]}.{path[1]}")
+        for node in ast.find_all(nodes.Getattr):
+            path = _dotted_path(node)
+
+            if path:
+                found.add(f"{path[0]}.{path[1]}")
 
     return found
 
@@ -186,7 +191,8 @@ def check_schema_covers_template(app):
 
     if unaccounted:
         print(
-            f"\nERROR: {TEMPLATE} reads attributes this fixture does not carry:",
+            f"\nERROR: {', '.join(TEMPLATES)} read attributes "
+            f"this fixture does not carry:",
             file=sys.stderr,
         )
 
@@ -205,11 +211,56 @@ def check_schema_covers_template(app):
     excluded = touched & exclusions
     captured = touched - excluded
 
-    print(f"  preflight: {len(touched)} attributes read by {TEMPLATE}")
+    print(f"  preflight: {len(touched)} attributes read by {len(TEMPLATES)} templates")
     print(
         f"             {len(captured)} captured, "
         f"{len(excluded)} excluded by design"
     )
+
+
+# ── Editorial metadata ──────────────────────────────────────────────────────
+
+DEFAULT_LABEL = "TODO: picker card title"
+DEFAULT_CAPTION = "TODO: one line on what this sample demonstrates"
+
+
+def existing_demo_metadata(path):
+    """
+    Return {slug: demo_block} from a fixture already on disk.
+
+    The `demo` block is the one half of this file a person writes; everything
+    under `message` is captured. Re-emitting the TODO placeholders on every dump
+    meant retyping the picker copy after each capture, and — worse — silently
+    shipping "TODO: picker card title" to a public page if anyone forgot.
+
+    Missing or unreadable file is not an error: a first run has nothing to carry
+    forward, and a corrupt one should not block a fresh capture.
+    """
+    if not path.exists():
+        return {}
+
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"  note: could not read existing {path} ({type(exc).__name__}); "
+              f"labels will fall back to placeholders")
+        return {}
+
+    return {
+        sample["demo"]["slug"]: sample["demo"]
+        for sample in document.get("samples", [])
+        if isinstance(sample.get("demo"), dict) and sample["demo"].get("slug")
+    }
+
+
+def demo_block(slug, previous):
+    """Editorial metadata for one sample, carrying forward whatever was written."""
+    prior = previous.get(slug, {})
+    return {
+        "slug": slug,
+        "label": prior.get("label") or DEFAULT_LABEL,
+        "caption": prior.get("caption") or DEFAULT_CAPTION,
+    }
 
 
 # ── Capture ─────────────────────────────────────────────────────────────────
@@ -451,6 +502,13 @@ def main():
 
     print(f"  database: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
+    # Read before writing so an overwrite keeps the labels and captions already
+    # written for these slugs.
+    previous_demo = existing_demo_metadata(args.out)
+    if previous_demo:
+        print(f"  existing fixture: carrying forward copy for "
+              f"{', '.join(sorted(previous_demo))}")
+
     with app.app_context():
         check_schema_covers_template(app)
 
@@ -485,14 +543,9 @@ def main():
             samples.append(
                 {
                     # Demo-page metadata written by us, not produced by the
-                    # analysis pipeline.
-                    "demo": {
-                        "slug": slug,
-                        "label": "TODO: picker card title",
-                        "caption": (
-                            "TODO: one line on what this sample demonstrates"
-                        ),
-                    },
+                    # analysis pipeline. Preserved across an overwrite so a
+                    # re-capture never discards the picker copy.
+                    "demo": demo_block(slug, previous_demo),
 
                     # Everything here came from the saved analysis.
                     "message": payload,

@@ -194,6 +194,14 @@
         color: #1a1208;
     }
 
+    /* The model puts a thematic break between sections. Kept faint — the section
+       cards already carry most of the separation. */
+    .llm-prose hr {
+        border: none;
+        border-top: 1px solid #ebe5db;
+        margin: 18px 0;
+    }
+
     .llm-empty {
         font-size: 0.875rem;
         color: #c4b9aa;

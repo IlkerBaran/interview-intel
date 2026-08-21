@@ -362,8 +362,29 @@ def test_heading_follows_the_content(client):
         assert ">Details<" in body, slug
 
 
-def test_extracted_fields_still_render_where_present(client):
-    """Omitting the empty ones must not omit the populated ones."""
+def test_extracted_fields_render_exactly_when_populated(app, client):
+    """Omitting the empty fields must not omit the populated ones.
+
+    Derived from the fixture rather than a hardcoded list of seven labels. Which
+    fields the extraction fills varies between captures — a re-run moved "Zoom"
+    from location_text into interview_format — and pinning that here would be
+    testing the model instead of the page.
+    """
+    with app.app_context():
+        ar = get_sample("interview-invitation").message.analysis_result
+
+    fields = {
+        "Company": ar.company_name,
+        "Role": ar.role_title,
+        "Stage": ar.interview_stage,
+        "Format": ar.interview_format,
+        "Date": ar.date_text,
+        "Time": ar.time_text,
+        "Location": ar.location_text,
+    }
+
     body = client.get("/demo/interview-invitation?ready=1").get_data(as_text=True)
-    for label in ("Company", "Role", "Stage", "Format", "Date", "Time", "Location"):
-        assert f'<span class="detail-label">{label}</span>' in body
+
+    for label, value in fields.items():
+        rendered = f'<span class="detail-label">{label}</span>' in body
+        assert rendered is bool(value), f"{label}: rendered={rendered}, value={value!r}"

@@ -72,9 +72,11 @@ def test_enrichments_populate_without_flask_context():
 class _RecordingMessages:
     def __init__(self):
         self.prompts = []
+        self.calls = []
 
     def create(self, **kwargs):
         self.prompts.append(kwargs["messages"][0]["content"])
+        self.calls.append(kwargs)
         return _FakeResp("REAL OUTPUT")
 
 
@@ -352,3 +354,30 @@ def test_prep_prompt_forbids_inventing_durations_and_proportions():
     assert "durations, minute counts, proportions" in prompt
     assert "describe it as split and assign NO amounts" in prompt
     assert "An\n  allocation that sums to the stated total is still invented" in prompt
+
+
+def test_prep_guidance_output_budget_reaches_the_api_call():
+    """The prompt caps the answer at 250 words; max_tokens is only meant to bound a
+    runaway response. At 350 it was the real constraint — Markdown costs roughly
+    1.75 tokens per word, so the guidance stopped mid-sentence after about 200
+    words, visibly, on the public demo.
+
+    Asserts the constant reaches the request rather than asserting the constant
+    equals itself: a budget defined and then not passed through is exactly the
+    shape of the bug, and a tautological check would not see it.
+    """
+    from app.services.llm_service import PREP_GUIDANCE_MAX_TOKENS
+
+    svc = _load_recording_llm()
+    svc.generate_preparation_guidance(
+        role_title="Backend Engineer",
+        company_name="A.B.C Data",
+        interview_format="video",
+        job_field="software_engineering",
+        raw_text=SAMPLE_EMAIL,
+    )
+
+    assert svc._client.messages.calls[0]["max_tokens"] == PREP_GUIDANCE_MAX_TOKENS
+    # A 250-word answer needs ~440 tokens at this content's token-per-word ratio.
+    # The floor is what stops a future trim from quietly reintroducing truncation.
+    assert PREP_GUIDANCE_MAX_TOKENS >= 600

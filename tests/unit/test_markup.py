@@ -25,7 +25,7 @@ from app.markup import render_llm_text
 # Everything the renderer is allowed to construct. Deliberately no <a>: model output
 # reaches a public page, and a generated hyperlink there is a phishing surface for no
 # benefit, since the prompts never ask for URLs.
-ALLOWED_TAGS = {"p", "br", "strong", "ul", "ol", "li", "h3", "h4", "h5", "h6"}
+ALLOWED_TAGS = {"p", "br", "hr", "strong", "ul", "ol", "li", "h3", "h4", "h5", "h6"}
 
 HOSTILE = [
     "<script>alert(1)</script>",
@@ -197,3 +197,20 @@ def test_a_heading_after_a_list_still_closes_it():
     rendered = str(render_llm_text("- item\n\n## Next section"))
 
     assert rendered == "<ul><li>item</li></ul><h4>Next section</h4>"
+
+
+@pytest.mark.parametrize("rule", ["---", "***", "___", "- - -", "  ----  "])
+def test_a_thematic_break_becomes_an_hr(rule):
+    """The model puts `---` between sections. Without this it fell through to the
+    paragraph branch and rendered as a literal "---" on the page — three of them in
+    the re-captured guidance."""
+    assert str(render_llm_text(rule)) == "<hr>"
+
+
+def test_a_rule_is_not_mistaken_for_a_bullet():
+    """"- - -" matches the bullet pattern too; the rule check has to run first."""
+    assert "<li>" not in str(render_llm_text("- - -"))
+
+
+def test_a_dash_bullet_is_still_a_bullet():
+    assert str(render_llm_text("- item")) == "<ul><li>item</li></ul>"
