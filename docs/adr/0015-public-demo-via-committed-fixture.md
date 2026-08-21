@@ -73,7 +73,7 @@ pages link.
 data attributes on `#analysis-status`. The real page passes `data-status-url` and reloads
 in place, because the server will then render the finished result from the database. The
 demo passes `data-poll-ms="1000"` and a `data-reload-url`, because its result lives at a
-different URL and its replay is five seconds rather than fifteen to thirty.
+different URL and its replay is five seconds rather than ten to fifteen.
 
 Sharing the file is the point: a separate demo poller would be demonstrating something
 that is not the app. Extraction also removes an inline script from both pages, which the
@@ -97,7 +97,7 @@ bounded limit instead.
 ### The page explains itself before the visitor starts
 
 Above the picker, in ordinary prose rather than a banner or a footnote: these are saved
-examples; the real pipeline is asynchronous and takes 15-30 seconds; this replays a
+examples; the real pipeline is asynchronous and takes 10-15 seconds; this replays a
 completed run so the wait is short; and nothing here runs the pipeline, writes to the
 database, or triggers a paid API call. A separate short section states what the endpoint
 does and does not do, because a public unauthenticated route on an app that costs money

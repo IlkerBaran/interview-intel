@@ -113,12 +113,6 @@
         font-weight: 500;
     }
 
-    .detail-value.empty {
-        color: #c4b9aa;
-        font-style: italic;
-        font-weight: 400;
-    }
-
     /* ── PREDICTION ROW ── */
     .prediction-row {
         display: flex;
@@ -151,12 +145,53 @@
     }
 
     /* ── LLM TEXT CONTENT ── */
-    .llm-content {
+    /* Enrichment prose, rendered from the model's Markdown by the llm_markup
+       filter. NOT pre-wrap: the renderer emits real blocks now, and preserving
+       source newlines on top of them doubles every gap. */
+    .llm-prose {
         font-size: 0.875rem;
         color: #4a3f32;
         line-height: 1.8;
-        white-space: pre-wrap;
         word-break: break-word;
+    }
+
+    .llm-prose > :first-child { margin-top: 0; }
+    .llm-prose > :last-child  { margin-bottom: 0; }
+
+    .llm-prose p {
+        margin: 0 0 12px;
+    }
+
+    /* h1 is the message title and h2 the section headings, so model headings
+       start at h3 and stay visibly subordinate to both. */
+    .llm-prose h3,
+    .llm-prose h4,
+    .llm-prose h5,
+    .llm-prose h6 {
+        font-weight: 700;
+        color: #1a1208;
+        line-height: 1.4;
+        margin: 20px 0 8px;
+    }
+
+    .llm-prose h3 { font-size: 0.95rem; }
+    .llm-prose h4 { font-size: 0.875rem; }
+    .llm-prose h5,
+    .llm-prose h6 { font-size: 0.825rem; color: #4a3f32; }
+
+    .llm-prose ul,
+    .llm-prose ol {
+        margin: 0 0 12px;
+        padding-left: 20px;
+    }
+
+    .llm-prose li {
+        margin-bottom: 6px;
+    }
+
+    .llm-prose strong {
+        font-weight: 600;
+        color: #1a1208;
     }
 
     .llm-empty {

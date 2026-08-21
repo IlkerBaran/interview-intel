@@ -104,66 +104,48 @@
             </div>
         </div>
 
-        <!-- ── INTERVIEW DETAILS ── -->
+        <!-- ── EXTRACTED DETAILS ── -->
+        {# Only the fields that were actually extracted. Seven rows of "Not found"
+           on a rejection is noise, and it reads as failure rather than as the
+           pipeline correctly finding nothing to report.
+
+           The heading follows the content: an email carrying no stage, format,
+           date, time or location is not an interview, whatever else was pulled
+           out of it. "Details" rather than "Application Details" because the
+           seven categories include recruiter_outreach, where no application
+           exists yet — this is the one label that is never wrong. #}
+        {% set details = [
+            ("Company",  ar.company_name),
+            ("Role",     ar.role_title),
+            ("Stage",    ar.interview_stage | replace("_", " ") | title if ar.interview_stage else None),
+            ("Format",   ar.interview_format | title if ar.interview_format else None),
+            ("Date",     ar.date_text),
+            ("Time",     ar.time_text),
+            ("Location", ar.location_text),
+        ] %}
+        {% set interview_fields = [ar.interview_stage, ar.interview_format,
+                                   ar.date_text, ar.time_text, ar.location_text] %}
+        {% if details | map(attribute=1) | select | list %}
         <div class="section">
             <div class="section-header">
-                <h2 class="section-title">Interview Details</h2>
+                <h2 class="section-title">{% if interview_fields | select | list %}Interview Details{% else %}Details{% endif %}</h2>
             </div>
             <div class="section-body">
                 <div class="detail-grid">
 
-                    <div class="detail-item">
-                        <span class="detail-label">Company</span>
-                        <span class="detail-value {% if not ar.company_name %}empty{% endif %}">
-                            {{ ar.company_name or "Not found" }}
-                        </span>
-                    </div>
-
-                    <div class="detail-item">
-                        <span class="detail-label">Role</span>
-                        <span class="detail-value {% if not ar.role_title %}empty{% endif %}">
-                            {{ ar.role_title or "Not found" }}
-                        </span>
-                    </div>
-
-                    <div class="detail-item">
-                        <span class="detail-label">Stage</span>
-                        <span class="detail-value {% if not ar.interview_stage %}empty{% endif %}">
-                            {{ ar.interview_stage | replace("_", " ") | title if ar.interview_stage else "Not found" }}
-                        </span>
-                    </div>
-
-                    <div class="detail-item">
-                        <span class="detail-label">Format</span>
-                        <span class="detail-value {% if not ar.interview_format %}empty{% endif %}">
-                            {{ ar.interview_format | title if ar.interview_format else "Not found" }}
-                        </span>
-                    </div>
-
-                    <div class="detail-item">
-                        <span class="detail-label">Date</span>
-                        <span class="detail-value {% if not ar.date_text %}empty{% endif %}">
-                            {{ ar.date_text or "Not found" }}
-                        </span>
-                    </div>
-
-                    <div class="detail-item">
-                        <span class="detail-label">Time</span>
-                        <span class="detail-value {% if not ar.time_text %}empty{% endif %}">
-                            {{ ar.time_text or "Not found" }}
-                        </span>
-                    </div>
-
-                    <div class="detail-item">
-                        <span class="detail-label">Location</span>
-                        <span class="detail-value {% if not ar.location_text %}empty{% endif %}">
-                            {{ ar.location_text or "Not found" }}
-                        </span>
-                    </div>
+                    {% for label, value in details %}
+                        {% if value %}
+                        <div class="detail-item">
+                            <span class="detail-label">{{ label }}</span>
+                            <span class="detail-value">{{ value }}</span>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
 
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <!-- ── PREPARATION GUIDANCE ── -->
         {% if ar.preparation_guidance %}
@@ -172,7 +154,7 @@
                 <h2 class="section-title">Preparation Guidance</h2>
             </div>
             <div class="section-body">
-                <div class="llm-content">{{ ar.preparation_guidance }}</div>
+                <div class="llm-prose">{{ ar.preparation_guidance | llm_markup }}</div>
             </div>
         </div>
         {% endif %}
@@ -184,7 +166,7 @@
                 <h2 class="section-title">Questions to Ask</h2>
             </div>
             <div class="section-body">
-                <div class="llm-content">{{ ar.suggested_questions }}</div>
+                <div class="llm-prose">{{ ar.suggested_questions | llm_markup }}</div>
             </div>
         </div>
         {% endif %}
@@ -197,7 +179,7 @@
                 <span class="section-hint">Draft — read and edit before sending</span>
             </div>
             <div class="section-body">
-                <div class="llm-content">{{ ar.reply_suggestions }}</div>
+                <div class="llm-prose">{{ ar.reply_suggestions | llm_markup }}</div>
             </div>
         </div>
         {% endif %}
@@ -209,7 +191,7 @@
                 <h2 class="section-title">Role Summary</h2>
             </div>
             <div class="section-body">
-                <div class="llm-content">{{ ar.role_summary }}</div>
+                <div class="llm-prose">{{ ar.role_summary | llm_markup }}</div>
             </div>
         </div>
         {% endif %}

@@ -138,11 +138,21 @@ def test_index_renders_without_login(client, slugs):
 
 
 def test_index_states_what_the_page_is(client):
-    """The honesty copy is a requirement, not decoration. If it is ever edited away
-    this fails rather than quietly shipping a page that implies live analysis."""
+    """The honesty copy is a requirement of the feature, not decoration.
+
+    Asserted as SUBSTANCE rather than exact sentences — the wording is edited, and a
+    test that pins prose word-for-word only teaches people to update the test. Each
+    claim below is one a reviewer would check, so each must survive a rewrite:
+    saved not live, the real timing, and the three things the page promises it does
+    not do.
+    """
     body = client.get("/demo/").get_data(as_text=True)
-    assert "Nothing runs live on this page." in body
-    assert "runs the analysis pipeline, writes to the database, or\n            triggers a paid API call." in body
+
+    assert "saved" in body.lower()
+    assert "10–15 seconds" in body or "10-15 seconds" in body
+    assert "runs the analysis pipeline" in body
+    assert "writes to the database" in body
+    assert "paid API call" in body
     assert "do not invoke the ML or LLM services" in body
     assert "rate limited per IP" in body
 
@@ -307,3 +317,53 @@ def test_loader_returns_no_orm_objects(app, slugs):
                 assert not isinstance(sample.message.analysis_result, db.Model)
             for task in sample.message.tasks:
                 assert not isinstance(task, db.Model)
+
+
+# ≈≈≈≈ rendered output, not raw source ≈≈≈≈
+# The demo is the public artefact, so what it shows has to be finished. These pin the
+# two things that were visibly wrong on it: literal Markdown characters, and a grid of
+# "Not found" on a message that never had interview details.
+
+def test_no_page_shows_raw_markdown(client, slugs):
+    """The model writes `# headings` and `**bold**`; a pre-wrap block printed those
+    characters literally. The llm_markup filter renders them instead."""
+    for slug in slugs:
+        body = client.get(f"/demo/{slug}?ready=1").get_data(as_text=True)
+        assert "**" not in body, slug
+        assert "\n# " not in body, slug
+
+
+def test_full_sample_renders_markdown_as_html(client):
+    body = client.get("/demo/interview-invitation?ready=1").get_data(as_text=True)
+    assert '<div class="llm-prose">' in body
+    assert "<h3>" in body
+    assert "<strong>" in body
+    assert "<li>" in body
+
+
+def test_sparse_samples_show_no_not_found_rows(client):
+    """A rejection has no stage, format, date, time or location. Seven rows of
+    "Not found" read as failure rather than as the pipeline correctly finding
+    nothing to report."""
+    for slug in ("rejection", "application-received"):
+        body = client.get(f"/demo/{slug}?ready=1").get_data(as_text=True)
+        assert "Not found" not in body, slug
+
+
+def test_heading_follows_the_content(client):
+    """An email with no interview fields is not an interview, whatever else was
+    extracted from it — so it must not be headed "Interview Details"."""
+    full = client.get("/demo/interview-invitation?ready=1").get_data(as_text=True)
+    assert "Interview Details" in full
+
+    for slug in ("rejection", "application-received"):
+        body = client.get(f"/demo/{slug}?ready=1").get_data(as_text=True)
+        assert "Interview Details" not in body, slug
+        assert ">Details<" in body, slug
+
+
+def test_extracted_fields_still_render_where_present(client):
+    """Omitting the empty ones must not omit the populated ones."""
+    body = client.get("/demo/interview-invitation?ready=1").get_data(as_text=True)
+    for label in ("Company", "Role", "Stage", "Format", "Date", "Time", "Location"):
+        assert f'<span class="detail-label">{label}</span>' in body

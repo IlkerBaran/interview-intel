@@ -151,6 +151,23 @@ def create_app():
         return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
+    @app.template_filter("llm_markup")
+    def llm_markup(text):
+        """
+        Render enrichment prose written in the LLM's light Markdown.
+
+        The model answers with `# headings`, `**bold**` and `- bullets`; a
+        pre-wrap block showed those characters literally on the message page and
+        the public demo. See app/markup.py for why this is a small escape-first
+        renderer rather than a Markdown library.
+
+        Registered on the app (not a blueprint) so the shared macros in
+        messages/_analysis.html can use it.
+        """
+        from .markup import render_llm_text
+        return render_llm_text(text)
+
+
     @app.context_processor
     def inject_unread_notification_count():
         # Provides unread_count globally to templates for displaying the notification badge but
