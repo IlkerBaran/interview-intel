@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Example output — Interview Intel{% endblock %}
+{% block description %}Three saved Interview Intel analyses, shown in the real interface. No account needed.{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/demo.css') }}">
+{% endblock %}
+
+{% block content %}
+
+    <div class="demo-hero">
+        <h1 class="demo-title">Example output</h1>
+        <p class="demo-lede">
+            See three real Interview Intel analyses in the actual app interface. No account needed.
+        </p>
+    </div>
+
+    {# The honesty section. Deliberately above the picker and in ordinary prose: a
+       visitor should understand the architecture before they start, not discover a
+       disclaimer at the bottom afterwards. #}
+    <div class="demo-explainer">
+        <p>
+            These examples were run through the Interview Intel pipeline once and saved for this demo.
+            What you see here is the real output, rendered with the same templates used by the full app.
+        </p>
+        <p>
+            In the app, analysis runs asynchronously. When a user submits an email, the request returns
+            immediately while a Celery worker on a dedicated queue processes it in the background. The worker
+            runs the classifier and roughly six LLM calls, and the page polls a status endpoint until the analysis
+            is complete. That usually takes about 10–15 seconds. For this demo, the analysis has already been
+            completed and saved, so the same flow is shown without running the pipeline again. The “Analyzing…”
+            state uses the real template and poller, but it only waits about 5 seconds before showing the stored result.
+        </p>
+        <p class="demo-explainer-close">
+            Nothing you do here runs the analysis pipeline, writes to the database, or
+            triggers a paid API call.
+        </p>
+    </div>
+
+    <div class="demo-security">
+        <p class="demo-security-title">About this endpoint</p>
+        <p class="demo-security-intro">
+            Worth being specific, since this is a public unauthenticated route on an app
+            that otherwise costs money per request.
+        </p>
+        <ul class="demo-security-list">
+            <li>
+                <strong>It's read-only.</strong> Every demo URL is a GET. It reads one
+                committed JSON file and renders a template. No insert, no update, no queued
+                job, no email.
+            </li>
+            <li>
+                <strong>It holds no user data.</strong> The three samples are emails written
+                for this page. Nothing here belongs to anyone, and nothing you do here is
+                stored against you.
+            </li>
+            <li>
+                <strong>The demo routes do not invoke the ML or LLM services or enqueue
+                analysis jobs.</strong> Those calls happened once, when these samples were
+                generated.
+            </li>
+            <li>
+                <strong>The sample name is matched against a fixed list of three</strong>,
+                not used to build a file path.
+            </li>
+            <li>
+                <strong>It's rate limited per IP</strong>, like the rest of the app. Free to
+                serve isn't the same as free to abuse.
+            </li>
+        </ul>
+    </div>
+
+    <div class="demo-picker">
+        {% for sample in samples %}
+            <a class="demo-card" href="{{ url_for('demo.show', slug=sample.slug) }}">
+                <span class="demo-card-label">{{ sample.label }}</span>
+                <span class="demo-card-caption">{{ sample.caption }}</span>
+                <span class="demo-card-go">Replay this analysis →</span>
+            </a>
+        {% endfor %}
+    </div>
+
+    <p class="demo-picker-note">
+        Pick one — it takes about {{ replay_seconds }} seconds.
+    </p>
+
+{% endblock %}

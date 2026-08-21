@@ -50,6 +50,9 @@
             <div class="nav-right" id="nav-right">
                 <div class="nav-links">
                     {{ nav_link("main.home", "Home") }}
+                    {%- if not current_user.is_authenticated %}
+                    {{ nav_link("demo.index", "Demo") }}
+                    {%- endif %}
                     {{ nav_link("main.about", "About") }}
 
                     {% if current_user.is_authenticated %}

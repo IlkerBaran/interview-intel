@@ -1,0 +1,344 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Message detail — the analysed-message view.
+
+   Moved verbatim out of the {% block extra_styles %} of
+   templates/messages/show_message.html so that page and templates/demo/show.html
+   can share one copy alongside the macros in messages/_analysis.html. Nothing
+   changed in the move; show_message.html was proved byte-identical afterwards.
+
+   Note this file redefines .btn / .btn-primary / .btn-secondary / .btn-ghost with
+   different padding than style.css, exactly as the inline block did. That
+   shadowing came along with the move and is a separate cleanup.
+   ═══════════════════════════════════════════════════════════════════ */
+
+    /* ── PAGE HEADER ── */
+    .message-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .message-title {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #1a1208;
+        letter-spacing: -0.3px;
+        margin: 0 0 6px;
+    }
+
+    .message-subtitle {
+        font-size: 0.875rem;
+        color: #746857;
+        margin: 0;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        flex-shrink: 0;
+    }
+
+    /* ── BADGES ── */
+    .badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 99px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+    }
+
+    .badge-blue   { background: #eff6ff; color: #2563eb; }
+    .badge-green  { background: #f0fdf4; color: #16a34a; }
+    .badge-orange { background: #fff7ed; color: #ea580c; }
+    .badge-gray   { background: #f0ede6; color: #6b5f4f; border: 1px solid #e0d9cf; }
+
+    /* ── SECTION CARDS ── */
+    .section {
+        background: #fffcf5;
+        border: 1px solid #ebe5db;
+        border-radius: 12px;
+        margin-bottom: 16px;
+        overflow: hidden;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 20px;
+        border-bottom: 1px solid #ebe5db;
+        background: #faf6ef;
+    }
+
+    .section-title {
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: #1a1208;
+        margin: 0;
+    }
+
+    .section-body {
+        padding: 20px;
+    }
+
+    /* ── DETAIL GRID ── */
+    .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+    }
+
+    .detail-item {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .detail-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #a89880;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .detail-value {
+        font-size: 0.875rem;
+        color: #1a1208;
+        font-weight: 500;
+    }
+
+    .detail-value.empty {
+        color: #c4b9aa;
+        font-style: italic;
+        font-weight: 400;
+    }
+
+    /* ── PREDICTION ROW ── */
+    .prediction-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .prediction-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .prediction-label {
+        font-size: 0.75rem;
+        color: #a89880;
+        font-weight: 500;
+    }
+
+    .confidence {
+        font-size: 0.7rem;
+        color: #c4b9aa;
+    }
+
+    .section-hint {
+        font-size: 0.72rem;
+        color: #a89880;
+        font-weight: 500;
+    }
+
+    /* ── LLM TEXT CONTENT ── */
+    .llm-content {
+        font-size: 0.875rem;
+        color: #4a3f32;
+        line-height: 1.8;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .llm-empty {
+        font-size: 0.875rem;
+        color: #c4b9aa;
+        font-style: italic;
+    }
+
+    /* ── TASKS SECTION ── */
+    .task-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .task-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        background: #f7f2e8;
+        border: 1px solid #e8e2d9;
+        border-radius: 8px;
+    }
+
+    .task-check {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1.5px solid #d9d2c8;
+        flex-shrink: 0;
+    }
+
+    .task-check.done {
+        background: #1a1208;
+        border-color: #1a1208;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #f7f2e8;
+        font-size: 10px;
+    }
+
+    .task-name {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #1a1208;
+        flex: 1;
+    }
+
+    .task-name.done {
+        text-decoration: line-through;
+        color: #a89880;
+    }
+
+    .task-due {
+        font-size: 0.72rem;
+        color: #746857;
+        font-weight: 600;
+    }
+
+    /* Overdue is the first such state this app has had. Colour alone is not the
+       signal — the word "Overdue" carries it for anyone who cannot separate the
+       hue from the surrounding muted text. */
+    .task-due.overdue {
+        color: #dc2626;
+    }
+
+    /* ── RAW EMAIL ── */
+    .raw-email {
+        font-size: 0.825rem;
+        color: #4a3f32;
+        line-height: 1.8;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f7f2e8;
+        border: 1px solid #e8e2d9;
+        border-radius: 8px;
+        padding: 16px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    /* ── NOTE SECTION ── */
+    .note-content {
+        font-size: 0.875rem;
+        color: #4a3f32;
+        line-height: 1.7;
+        white-space: pre-wrap;
+    }
+
+    .note-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    /* ── ACTION BUTTONS ── */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 14px;
+        border-radius: 7px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+
+    .btn-primary   { background: #8b5e3c; color: #f7f2e8; }
+    .btn-primary:hover { background: #6f4b30; }
+
+    .btn-secondary { background: #e8e2d9; color: #4a3f32; }
+    .btn-secondary:hover { background: #ddd7ce; }
+
+    .btn-danger    { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+    .btn-danger:hover { background: #fecaca; }
+
+    .btn-ghost     { background: transparent; color: #746857; border: 1px solid #e8e2d9; }
+    .btn-ghost:hover { background: #f7f2e8; }
+
+    /* ── DANGER ZONE ── */
+    .danger-zone {
+        border: 1px solid #fecaca;
+        border-radius: 12px;
+        padding: 16px 20px;
+        background: #fef2f2;
+        margin-bottom: 16px;
+    }
+
+    .danger-zone-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #dc2626;
+        margin-bottom: 8px;
+    }
+
+    .danger-zone-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    /* ── PROCESSING STATE ── */
+    .processing-banner {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin-bottom: 16px;
+        font-size: 0.875rem;
+        color: #92400e;
+        font-weight: 500;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+        .detail-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .message-header {
+            flex-direction: column;
+        }
+
+        .header-actions {
+            width: 100%;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .detail-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+    }

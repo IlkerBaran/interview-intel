@@ -6,6 +6,7 @@ from .auth import auth_bp
 from .errors import errors_bp
 from .applications import applications_bp
 from .notifications import notifications_bp
+from .demo import demo_bp
 
 def register_blueprints(app):
     """
@@ -22,3 +23,4 @@ def register_blueprints(app):
     app.register_blueprint(errors_bp)
     app.register_blueprint(applications_bp)
     app.register_blueprint(notifications_bp)
+    app.register_blueprint(demo_bp)

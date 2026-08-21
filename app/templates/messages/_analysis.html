@@ -1,0 +1,278 @@
+{# ─────────────────────────────────────────────
+   Shared rendering of one analysed message.
+
+   Split on a single line: everything in this file is READ-ONLY output, and
+   everything left in messages/show_message.html is an action only the owner may
+   take — Back, Archive, Add/Delete note, Delete email — or chrome belonging to
+   one page.
+
+   These are macros rather than an `{% if demo %}` flag threaded through
+   show_message.html because the demo needs the whole read-only half and none of
+   the other: a flag would put eight demo-shaped branches inside the template that
+   renders paid results, and every later edit would have to reason about both
+   callers.
+
+   Callers: messages/show_message.html and demo/show.html. BOTH must link
+   static/css/message-detail.css, which carries the styles for all of it.
+───────────────────────────────────────────────── #}
+{% from "macros.html" import category_badge, urgency_badge, localtime %}
+
+
+{# Pending/processing and failed banners. The demo only reaches the first branch;
+   the failed branch reads message.quota_refunded, which Jinja never evaluates for
+   a completed sample, so the fixture does not carry that field. #}
+{% macro analysis_status_banner(message, status_url=None, poll_ms=None, reload_url=None) %}
+    <!-- ── PROCESSING BANNER ── -->
+    {% if message.status in ["pending", "processing"] %}
+        <div class="processing-banner" id="analysis-status"{% if status_url %} data-status-url="{{ status_url }}"{% endif %}{% if poll_ms %} data-poll-ms="{{ poll_ms }}"{% endif %}{% if reload_url %} data-reload-url="{{ reload_url }}"{% endif %}>
+            ⏳ Analyzing this email… this page will refresh automatically when it's ready.
+        </div>
+    {% elif message.status == "failed" %}
+        <div class="processing-banner" style="background:#fef2f2; border-color:#fecaca; color:#991b1b;">
+            ⚠️ Analysis failed for this email. The raw email is still saved below.
+            {#- Driven by the marker the refund helpers set, so this reports what actually
+                happened rather than what usually happens. Without the refunded line a
+                counter going 3 → 2 → 3 reads as a bug; without the other line a capped
+                nothing-to-show result would quietly keep the slot. #}
+            <br>
+            {%- if message.quota_refunded %}
+            <span style="font-weight:600;">This didn't use one of your analyses.</span>
+            {%- else %}
+            <span style="font-weight:600;">This didn't produce a result and used one of your analyses.</span>
+            {%- endif %}
+        </div>
+    {% endif %}
+{%- endmacro %}
+
+
+{# Classification, extracted details, and the four LLM sections. Each section is
+   guarded on its own field — that is what makes a sparse analysis render as a
+   short page rather than a page of empty cards. #}
+{% macro analysis_result(ar) %}
+    {% if ar %}
+
+        <!-- ── ML PREDICTIONS ── -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Classification</h2>
+            </div>
+            <div class="section-body">
+                <div class="prediction-row">
+
+                    <div class="prediction-item">
+                        <span class="prediction-label">Category</span>
+                        {{ category_badge(ar.message_category) }}
+
+                        {% if ar.category_confidence %}
+                            <span class="confidence">{{ (ar.category_confidence * 100)|int }}%</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="prediction-item">
+                        <span class="prediction-label">Urgency</span>
+                        {{ urgency_badge(ar.urgency_level) }}
+                        {% if ar.urgency_confidence %}
+                            <span class="confidence">{{ (ar.urgency_confidence * 100)|int }}%</span>
+                        {% endif %}
+                    </div>
+
+                    {# A NULL confidence means the label was substituted — by the
+                       threshold in ml_service.predict() or by sender inheritance — so no
+                       number is shown beside a label that did not earn it. No percentage
+                       at all for job_field: unlike category/urgency this is a softmax over
+                       uncalibrated LinearSVC margins, where chance is 1/11. The threshold
+                       itself is derived per model by ml/train.py. #}
+                    <div class="prediction-item">
+                        <span class="prediction-label">Field</span>
+                        {% if not ar.job_field %}
+                            <span class="badge badge-gray">Unknown</span>
+                        {% elif ar.job_field == "unclassified" and ar.job_field_confidence is none %}
+                            <span class="badge badge-gray">Unclassified</span>
+                            <span class="confidence">not enough signal</span>
+                        {% else %}
+                            <span class="badge badge-gray"
+                                  {% if ar.job_field_confidence %}title="raw score {{ ar.job_field_confidence }} — uncalibrated, not a probability"{% endif %}>
+                                {{ ar.job_field | replace("_", " ") | title }}
+                            </span>
+                            {% if ar.job_field_confidence is none %}
+                                <span class="confidence">from earlier emails</span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ── INTERVIEW DETAILS ── -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Interview Details</h2>
+            </div>
+            <div class="section-body">
+                <div class="detail-grid">
+
+                    <div class="detail-item">
+                        <span class="detail-label">Company</span>
+                        <span class="detail-value {% if not ar.company_name %}empty{% endif %}">
+                            {{ ar.company_name or "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Role</span>
+                        <span class="detail-value {% if not ar.role_title %}empty{% endif %}">
+                            {{ ar.role_title or "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Stage</span>
+                        <span class="detail-value {% if not ar.interview_stage %}empty{% endif %}">
+                            {{ ar.interview_stage | replace("_", " ") | title if ar.interview_stage else "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Format</span>
+                        <span class="detail-value {% if not ar.interview_format %}empty{% endif %}">
+                            {{ ar.interview_format | title if ar.interview_format else "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Date</span>
+                        <span class="detail-value {% if not ar.date_text %}empty{% endif %}">
+                            {{ ar.date_text or "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Time</span>
+                        <span class="detail-value {% if not ar.time_text %}empty{% endif %}">
+                            {{ ar.time_text or "Not found" }}
+                        </span>
+                    </div>
+
+                    <div class="detail-item">
+                        <span class="detail-label">Location</span>
+                        <span class="detail-value {% if not ar.location_text %}empty{% endif %}">
+                            {{ ar.location_text or "Not found" }}
+                        </span>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ── PREPARATION GUIDANCE ── -->
+        {% if ar.preparation_guidance %}
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Preparation Guidance</h2>
+            </div>
+            <div class="section-body">
+                <div class="llm-content">{{ ar.preparation_guidance }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ── QUESTIONS TO ASK ── -->
+        {% if ar.suggested_questions %}
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Questions to Ask</h2>
+            </div>
+            <div class="section-body">
+                <div class="llm-content">{{ ar.suggested_questions }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ── REPLY SUGGESTION ── -->
+        {% if ar.reply_suggestions %}
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Suggested Reply</h2>
+                <span class="section-hint">Draft — read and edit before sending</span>
+            </div>
+            <div class="section-body">
+                <div class="llm-content">{{ ar.reply_suggestions }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ── ROLE SUMMARY ── -->
+        {% if ar.role_summary %}
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Role Summary</h2>
+            </div>
+            <div class="section-body">
+                <div class="llm-content">{{ ar.role_summary }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+    {% endif %}
+{%- endmacro %}
+
+
+{# show_all_link is the one piece of owner chrome inside the task list: it points
+   at the full task page, which a demo visitor cannot reach. #}
+{% macro analysis_tasks(tasks, show_all_link=True) %}
+    <!-- ── TASKS ── -->
+    {% if tasks %}
+    <div class="section">
+        <div class="section-header">
+            <h2 class="section-title">Tasks</h2>
+{% if show_all_link %}            <a href="{{ url_for('tasks.show_all_tasks') }}" style="font-size:0.75rem; color:#8b5e3c; text-decoration:none; font-weight:600;">
+                View all →
+            </a>
+{% endif %}        </div>
+        <div class="section-body">
+            <ul class="task-list">
+                {% for task in tasks %}
+                    <li class="task-item">
+                        <div class="task-check {% if task.is_completed %}done{% endif %}">
+                            {% if task.is_completed %}✓{% endif %}
+                        </div>
+                        <span class="task-name {% if task.is_completed %}done{% endif %}">
+                            {{ task.task_name }}
+                        </span>
+                        <span class="badge {% if task.priority == 'high' %}badge-orange{% elif task.priority == 'medium' %}badge-blue{% else %}badge-gray{% endif %}">
+                            {{ task.priority | title }}
+                        </span>
+                        {#- Mirrors the task list and the dashboard: a parsed date
+                            renders localised and can be overdue; an unparsed one
+                            renders the email's own words ("before the call") and
+                            never can. Both beat showing nothing. #}
+                        {%- if task.due_date %}
+                        {% set overdue = task.is_overdue %}
+                        <span class="task-due {% if overdue %}overdue{% endif %}">
+                            {% if overdue %}Overdue ·{% endif %}
+                            Due {{ localtime(task.due_date, "month_day_year") }}
+                        </span>
+                        {%- elif task.due_text %}
+                        <span class="task-due">Due {{ task.due_text }}</span>
+                        {%- endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+{%- endmacro %}
+
+
+{% macro original_email(raw_text) %}
+    <!-- ── RAW EMAIL ── -->
+    <div class="section">
+        <div class="section-header">
+            <h2 class="section-title">Original Email</h2>
+        </div>
+        <div class="section-body">
+            <div class="raw-email">{{ raw_text }}</div>
+        </div>
+    </div>
+{%- endmacro %}

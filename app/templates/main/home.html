@@ -45,7 +45,8 @@
                     <a href="{{ url_for('dashboard.index') }}" class="hero-btn">Go to Dashboard</a>
                 {% else %}
                     <a href="{{ url_for('auth.register') }}" class="hero-btn">Get Started Free</a>
-                    <a href="{{ url_for('auth.login') }}" class="hero-signin">Log In</a>
+                    <a href="{{ url_for('demo.index') }}" class="hero-signin">See example output</a>
+                    <a href="{{ url_for('auth.login') }}" class="hero-signin">Sign In</a>
                 {% endif %}
             </div>
         </div>
@@ -57,6 +58,7 @@
 
         <!-- Decorative scroll hint — pure-CSS bob. Not a button, not clickable, no JS, no scroll. -->
         <div class="hero-scroll-hint" aria-hidden="true">
+            <p>scroll</p>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9"></polyline>
@@ -172,7 +174,7 @@
                         <p class="footer-col-title">Product</p>
                         <ul class="footer-col-links">
                             <li><a href="{{ url_for('main.about') }}">About</a></li>
-                            <li><a href="#how-it-works">How It Works</a></li>
+                            <li><a href="{{ url_for('demo.index') }}">Example output</a></li>
                             {% if current_user.is_authenticated %}
                                 <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
                             {% else %}

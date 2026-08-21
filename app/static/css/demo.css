@@ -1,0 +1,206 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Public demo — the picker page and the demo-only chrome on a replay.
+
+   Everything that renders the ANALYSIS itself is styled by message-detail.css,
+   which demo/show.html links alongside this file. Nothing here restyles a
+   shared macro: the whole point is that a visitor sees the real interface, so
+   this file covers only what is specific to the demo — the explainer, the
+   security panel, the sample cards, the disclosure line and the sign-up CTA.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── PAGE HEAD ── */
+.demo-hero {
+    margin-bottom: 28px;
+}
+
+.demo-title {
+    font-size: 1.9rem;
+    font-weight: 700;
+    color: #1a1208;
+    letter-spacing: -0.5px;
+    margin: 0 0 8px;
+}
+
+.demo-lede {
+    font-size: 1rem;
+    color: #746857;
+    margin: 0;
+}
+
+/* ── THE EXPLANATION ── */
+.demo-explainer {
+    max-width: 68ch;
+    margin-bottom: 24px;
+}
+
+.demo-explainer p {
+    font-size: 0.925rem;
+    line-height: 1.75;
+    color: #4a3f32;
+    margin: 0 0 14px;
+}
+
+.demo-explainer-close {
+    font-weight: 600;
+    color: #1a1208 !important;
+}
+
+/* ── SECURITY PANEL ──
+   Quiet and bordered, not a shouting banner. An engineer should read it as an
+   explanation of the architecture, not as a defence. */
+.demo-security {
+    background: #fffcf5;
+    border: 1px solid #ebe5db;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 32px;
+    max-width: 68ch;
+}
+
+.demo-security-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #1a1208;
+    margin: 0 0 8px;
+}
+
+.demo-security-intro {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: #746857;
+    margin: 0 0 14px;
+}
+
+.demo-security-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.demo-security-list li {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: #4a3f32;
+    padding-left: 16px;
+    position: relative;
+}
+
+.demo-security-list li::before {
+    content: "·";
+    position: absolute;
+    left: 4px;
+    color: #a89880;
+    font-weight: 700;
+}
+
+.demo-security-list strong {
+    color: #1a1208;
+    font-weight: 600;
+}
+
+/* ── SAMPLE PICKER ── */
+.demo-picker {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.demo-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px;
+    background: #fffcf5;
+    border: 1px solid #ebe5db;
+    border-radius: 12px;
+    text-decoration: none;
+    transition: border-color 0.15s ease, transform 0.1s ease;
+}
+
+.demo-card:hover {
+    border-color: #d6ccbd;
+    transform: translateY(-2px);
+}
+
+.demo-card-label {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1a1208;
+}
+
+.demo-card-caption {
+    font-size: 0.825rem;
+    line-height: 1.65;
+    color: #746857;
+    flex: 1;
+}
+
+.demo-card-go {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #8b5e3c;
+    margin-top: 4px;
+}
+
+.demo-picker-note {
+    font-size: 0.825rem;
+    color: #a89880;
+    margin: 0 0 40px;
+}
+
+/* ── ON A REPLAY PAGE ── */
+.demo-disclosure {
+    font-size: 0.8rem;
+    color: #8a7c68;
+    margin: 8px 0 0;
+}
+
+.demo-disclosure a {
+    color: #8b5e3c;
+    font-weight: 600;
+}
+
+.demo-replay-note {
+    font-size: 0.825rem;
+    line-height: 1.7;
+    color: #746857;
+    margin: 0 0 16px;
+    max-width: 62ch;
+}
+
+.demo-cta {
+    border: 1px solid #ebe5db;
+    border-radius: 12px;
+    padding: 18px 22px;
+    background: #faf6ef;
+    margin-bottom: 16px;
+}
+
+.demo-cta-text {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: #4a3f32;
+    margin: 0;
+}
+
+.demo-cta-text a {
+    color: #8b5e3c;
+    font-weight: 600;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+    .demo-picker {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .demo-title {
+        font-size: 1.5rem;
+    }
+}

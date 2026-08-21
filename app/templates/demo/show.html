@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% from "macros.html" import localtime %}
+{% from "messages/_analysis.html" import analysis_status_banner, analysis_result,
+                                          analysis_tasks, original_email %}
+
+{% set ar = sample.message.analysis_result %}
+
+{% block title %}
+    {{ sample.label }} — Example output — Interview Intel
+{% endblock %}
+{% block description %}A saved Interview Intel analysis, replayed through the real interface. No account needed.{% endblock %}
+
+{% block extra_styles %}
+{# message-detail.css carries the styles for every macro in messages/_analysis.html;
+   the real message page links the same file. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/message-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/demo.css') }}">
+{% endblock %}
+
+{% block content %}
+
+    <div class="message-header">
+        <div>
+            <h1 class="message-title">
+                {% if ar and ar.role_title %}
+                    {{ ar.role_title }}
+                    {% if ar.company_name %} — {{ ar.company_name }}{% endif %}
+                {% elif sample.message.subject %}
+                    {{ sample.message.subject }}
+                {% else %}
+                    Email Analysis
+                {% endif %}
+            </h1>
+            <p class="message-subtitle">
+                {% if ar and ar.processed_at %}
+                    Analyzed {{ localtime(ar.processed_at, "datetime") }}
+                {% else %}
+                    Submitted {{ localtime(sample.message.created_at, "datetime") }}
+                {% endif %}
+                {% if sample.message.sender_email %}· {{ sample.message.sender_email }}{% endif %}
+            </p>
+
+            {# Carried on the result page itself, not only on /demo, so a deep link
+               straight to ?ready=1 still states what this is. #}
+            <p class="demo-disclosure">
+                Saved example — not a live analysis.
+                <a href="{{ url_for('demo.index') }}">What this means</a>
+            </p>
+        </div>
+
+        <div class="header-actions">
+            <a href="{{ url_for('demo.index') }}" class="btn btn-ghost">← All examples</a>
+        </div>
+    </div>
+
+    {% if ready %}
+
+        {{ analysis_result(ar) }}
+
+        {{ analysis_tasks(sample.message.tasks, show_all_link=False) }}
+
+        {{ original_email(sample.message.raw_text) }}
+
+        {# In place of the owner-only Danger Zone. An invitation after the result,
+           never a gate before it. #}
+        <div class="demo-cta">
+            <p class="demo-cta-text">
+                This is one saved example, replayed. To run your own email through the
+                pipeline, <a href="{{ url_for('auth.register') }}">create an account</a> —
+                it's free and takes a minute.
+            </p>
+        </div>
+
+    {% else %}
+
+        {# The real banner, driven by the real status value, polled by the real
+           poller. Only the work behind it already happened. #}
+        {{ analysis_status_banner(sample.pending(),
+                                  status_url=status_url,
+                                  poll_ms=poll_ms,
+                                  reload_url=reload_url) }}
+
+        <p class="demo-replay-note">
+            Replaying a saved run. A real analysis takes 10–15 seconds on the queue;
+            this one is already finished, so the wait is short.
+        </p>
+
+        {# Shown while waiting so the page is not blank — this is the input the saved
+           analysis was produced from. #}
+        {{ original_email(sample.message.raw_text) }}
+
+    {% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+{% if not ready %}
+{# The same file messages/show_message.html loads. A separate mock would be
+   demonstrating something that is not the app. #}
+<script src="{{ url_for('static', filename='js/analysis-poll.js') }}"></script>
+{% endif %}
+{% endblock %}
