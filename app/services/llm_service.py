@@ -676,6 +676,10 @@ Rules:
         """
         Safely extract and parse JSON from LLM response.
 
+        Always returns a dict. Callers index the result by key, so a payload that is
+        valid JSON but not an object (a list, string, number, boolean or null) must
+        not escape this method — it would raise AttributeError on .get() further up.
+
         Strategy:
         1. Try direct json.loads — cleanest case
         2. Walk character by character tracking brace depth
@@ -687,7 +691,12 @@ Rules:
 
         # strategy 1 — direct parse
         try:
-            return json.loads(text.strip())
+            parsed = json.loads(text.strip())
+            if isinstance(parsed, dict):
+                return parsed
+            # Valid JSON of the wrong shape. Fall through rather than returning {}
+            # here: strategy 2 can still recover an object wrapped in something else,
+            # such as [{...}]. If it finds nothing, the {} at the end applies.
         except json.JSONDecodeError:
             pass
 
