@@ -53,7 +53,6 @@ dist/
 *.egg-info/
 
 # This folder stores generated datasets, not source code
-ml/models/*.pkl
 ml/data/dataset.csv
 
 # keep the folder for convenience
