@@ -249,6 +249,9 @@ def create_app():
             try:
                 ml_service.load()
             except FileNotFoundError:
+                # Missing models should fail in production, but development can still start without them.
+                if os.getenv("FLASK_ENV") == "production":
+                    raise
                 logger.warning("ML models not found — run: python ml/train.py")
 
             # unknown ml load error
