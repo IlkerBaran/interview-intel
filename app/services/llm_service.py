@@ -51,6 +51,22 @@ MAX_ACTION_ITEMS      = 5
 MAX_ACTION_LENGTH     = 255
 MAX_DUE_TEXT_LENGTH   = 120
 
+# ── extracted scalar fields ──
+# Length limits for extracted fields that map to String(n) columns.
+# PostgreSQL enforces these limits, so values are capped before they are saved.
+#
+# Keep these values in sync with the AnalysisResult column sizes.
+# location_text is intentionally omitted because it uses db.Text and may contain
+# long meeting URLs that should not be truncated.
+MAX_EXTRACTION_FIELD_LENGTHS = {
+    "company_name":     255,
+    "role_title":       255,
+    "interview_stage":  100,
+    "interview_format": 100,
+    "date_text":        255,
+    "time_text":        255,
+}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # LLM_FAKE success-mode canned responses
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -227,6 +243,17 @@ REQUIRED KEYS (all 8 must be present):
   "action_items": array (use [] when the email asks for nothing)
 }}
 
+FIELD RULES:
+- "company_name" and "role_title": the name as written in the email, with no
+  extra description. Under 100 characters.
+- "interview_stage" and "interview_format": a SHORT label only, such as
+  "final", "phone screen", "onsite", "video call". Under 50 characters. Do not
+  write a sentence.
+- "date_text", "time_text" and "location_text": copy VERBATIM from the email.
+  Do not summarise, reformat or shorten these. If the email offers several
+  dates or times, include all of them. If the location is a meeting link,
+  include the ENTIRE URL exactly as written, plus any dial-in details.
+
 ACTION ITEMS:
 Each entry is {{"action": string, "due_text": string or null}}.
 - Include ONLY things the email explicitly asks the RECIPIENT to do.
@@ -249,15 +276,44 @@ EMAIL:
 
         # enforce schema — always return complete dict
         return {
-            "company_name":     parsed.get("company_name"),
-            "role_title":       parsed.get("role_title"),
-            "interview_stage":  parsed.get("interview_stage"),
-            "interview_format": parsed.get("interview_format"),
-            "date_text":        parsed.get("date_text"),
-            "time_text":        parsed.get("time_text"),
-            "location_text":    parsed.get("location_text"),
+            "company_name":     self._coerce_scalar(parsed, "company_name"),
+            "role_title":       self._coerce_scalar(parsed, "role_title"),
+            "interview_stage":  self._coerce_scalar(parsed, "interview_stage"),
+            "interview_format": self._coerce_scalar(parsed, "interview_format"),
+            "date_text":        self._coerce_scalar(parsed, "date_text"),
+            "time_text":        self._coerce_scalar(parsed, "time_text"),
+            "location_text":    self._coerce_scalar(parsed, "location_text"),
             "action_items":     self._coerce_action_items(parsed.get("action_items")),
         }
+
+    @staticmethod
+    def _coerce_scalar(parsed, key):
+        """
+        Clean one extracted scalar value before it is stored.
+
+        If the model returns something other than a string, return None instead of
+        passing an unexpected value to the database. Empty strings also become None.
+
+        Fields listed in MAX_EXTRACTION_FIELD_LENGTHS are capped to match their
+        String(n) columns. Fields that are not listed are intentionally left at full
+        length. In particular, location_text is Text so meeting URLs and long
+        locations should not be truncated.
+        """
+        # Guarded like _coerce_action_items guards its own input: _safe_json_load
+        # returns whatever valid JSON the model produced, which is not always an object.
+        if not isinstance(parsed, dict):
+            return None
+
+        value = parsed.get(key)
+        if not isinstance(value, str):
+            return None
+
+        value = value.strip()
+        if not value:
+            return None
+
+        limit = MAX_EXTRACTION_FIELD_LENGTHS.get(key)
+        return value[:limit] if limit is not None else value
 
     @staticmethod
     def _coerce_action_items(raw):
