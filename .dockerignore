@@ -1,0 +1,62 @@
+# Docker build context exclusions.
+#
+# It only keeps the file out of the image.
+# Docker does NOT read .gitignore — every exclusion must be listed
+# here, even when git already ignores it.
+
+
+# Secrets
+.env
+.env.*
+**/.env
+.flaskenv
+
+# Virtual environments
+.venv/
+venv/
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# Local databases and runtime state
+instance/
+*.sqlite
+*.sqlite3
+*.db
+dump.rdb
+celerybeat-schedule
+celerybeat-schedule.*
+
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Tests
+tests/
+pytest.ini
+
+# Training-only ML assets
+# Keep ml/models/ because production needs the trained models.
+ml/data/
+ml/notebooks/
+ml/train.py
+
+# Developer tooling and documentation
+.idea/
+.vscode/
+docs/
+scripts/
+requirements-dev.txt
+
+# OS junk and logs
+.DS_Store
+**/.DS_Store
+*.log
