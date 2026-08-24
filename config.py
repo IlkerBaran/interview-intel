@@ -39,7 +39,8 @@ class Config:
 
     - `ProductionConfig`:
       - Disables debug and testing modes.
-      - Requires `SECRET_KEY`, `WTF_CSRF_SECRET_KEY`, `ANTHROPIC_API_KEY`,
+      - Requires `SECRET_KEY`, `DATABASE_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`,
+        `RATELIMIT_STORAGE_URI`, `WTF_CSRF_SECRET_KEY`, `ANTHROPIC_API_KEY`,
         `RESEND_API_KEY`, `MAIL_DEFAULT_SENDER`, `SERVER_NAME` and
         `TRUSTED_PROXY_HOPS` to be set in the environment, raising on startup if any
         is missing.
@@ -279,6 +280,22 @@ class ProductionConfig(Config):
     SECRET_KEY = os.getenv("SECRET_KEY")
     if os.getenv("FLASK_ENV") == "production" and not SECRET_KEY:
         raise ValueError("SECRET_KEY must be set in environment")
+
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    if os.getenv("FLASK_ENV") == "production" and not DATABASE_URL:
+        raise ValueError("DATABASE_URL must be set in environment")
+
+    CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
+    if os.getenv("FLASK_ENV") == "production" and not CELERY_BROKER_URL:
+        raise ValueError("CELERY_BROKER_URL must be set in environment")
+
+    CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
+    if os.getenv("FLASK_ENV") == "production" and not CELERY_RESULT_BACKEND:
+        raise ValueError("CELERY_RESULT_BACKEND must be set in environment")
+
+    RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI")
+    if os.getenv("FLASK_ENV") == "production" and not RATELIMIT_STORAGE_URI:
+        raise ValueError("RATELIMIT_STORAGE_URI must be set in environment")
 
     WTF_CSRF_SECRET_KEY = os.getenv("WTF_CSRF_SECRET_KEY")
     if os.getenv("FLASK_ENV") == "production" and not WTF_CSRF_SECRET_KEY:
