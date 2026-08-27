@@ -5,9 +5,11 @@ venv/
 # Environment variables (secrets)
 .env
 .env.*
+.env.docker
 
 # Keep the example of environment variables
 !.env.example
+!.env.docker.example
 
 # Instance folder (runtime files like SQLite DB)
 instance/

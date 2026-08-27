@@ -1,0 +1,212 @@
+# Local production-like Docker stack for Interview Intel.
+# Not intended as a full production deployment.
+#
+# One application image is reused for:
+# - database migrations
+# - web server
+# - ML worker
+# - email/background worker
+#
+# Run Compose commands with:
+# docker compose --env-file .env.docker <command>
+
+x-app: &app
+  build:
+    context: .
+
+  # Shared application image used by all app services.
+  image: interview-intel:local
+
+  # Environment variables available inside the containers.
+  env_file:
+    - .env.docker
+
+  restart: unless-stopped
+
+  # App services wait until infrastructure is ready
+  # and migrations complete successfully.
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  db:
+    image: postgres:16
+
+    environment:
+      POSTGRES_USER: interview
+      POSTGRES_DB: interview_intel
+
+      # Fail early if POSTGRES_PASSWORD was not supplied.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.docker and pass --env-file .env.docker}
+
+    # Persist database data when the container is recreated.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U interview -d interview_intel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+
+  # ── Redis / Celery broker ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+
+    volumes:
+      - redisdata:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+    restart: unless-stopped
+
+
+  # ── Database migrations ───────────────────────────────────
+  # Runs once before the web app and workers start.
+  migrate:
+    <<: *app
+
+    # Override shared dependencies so migrate does not depend on itself.
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    # Migrations do not need ML models.
+    environment:
+      LOAD_MODELS: "0"
+
+    command: ["flask", "db", "upgrade"]
+
+    # Migration should exit after finishing, not restart.
+    restart: "no"
+
+
+  # ── Flask / Gunicorn web server ───────────────────────────
+  web:
+    <<: *app
+
+    # ML work is handled by the dedicated ML worker.
+    environment:
+      LOAD_MODELS: "0"
+
+    command:
+      - gunicorn
+      - "app:create_app()"
+      - --bind
+      - "0.0.0.0:8000"
+      - --workers
+      - "2"
+      - --access-logfile
+      - "-"
+      - --error-logfile
+      - "-"
+
+    # localhost:8000 -> container port 8000
+    ports:
+      - "8000:8000"
+
+    # Measured usage was about 371 MB.
+    mem_limit: 512m
+
+    healthcheck:
+      # Use Python because the slim image does not include curl/wget.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status==200 else 1)"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+
+  # ── ML Celery worker ──────────────────────────────────────
+  # Handles tasks routed to the "ml" queue.
+  worker-ml:
+    <<: *app
+
+    # This worker needs the ML models loaded.
+    environment:
+      LOAD_MODELS: "1"
+
+    command:
+      - celery
+      - -A
+      - celery_worker.celery
+      - worker
+      - -Q
+      - ml
+
+      # Keep concurrency low because ML processes use significant memory.
+      - --concurrency
+      - "1"
+
+      - --loglevel
+      - info
+
+    # Measured usage was about 474 MB.
+    mem_limit: 640m
+
+    # No healthcheck here because celery inspect would load the app/models
+    # again and could cause unnecessary memory pressure.
+
+
+  # ── Email / lightweight Celery worker ─────────────────────
+  # Handles tasks on the default "celery" queue.
+  worker-email:
+    <<: *app
+
+    environment:
+      LOAD_MODELS: "0"
+
+    command:
+      - celery
+      - -A
+      - celery_worker.celery
+      - worker
+      - -Q
+      - celery
+
+      # Lightweight tasks can run two at a time.
+      - --concurrency
+      - "2"
+
+      # Run Celery Beat for scheduled tasks.
+      # Keep this service at one replica while Beat is embedded here.
+      - -B
+
+      # Store Beat's temporary schedule file outside the app directory.
+      - --schedule
+      - /tmp/celerybeat-schedule
+
+      - --loglevel
+      - info
+
+    # Measured usage was about 167 MB.
+    mem_limit: 320m
+
+
+# ── Persistent Docker volumes ──────────────────────────────
+volumes:
+  pgdata:
+  redisdata:

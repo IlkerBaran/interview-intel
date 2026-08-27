@@ -198,8 +198,11 @@ class Config:
 
     # ≈≈≈≈ External URL building ≈≈≈≈
     # Stage 2: Required so url_for(_external=True) works OUTSIDE a request — e.g. verification /
-    # reset links built inside the Celery worker (ADR-0006). SERVER_NAME is app-wide:
-    # it also makes the web app enforce Host-header matching (acceptable, single domain).
+    # reset links built inside the Celery worker (ADR-0006). SERVER_NAME is app-wide.
+    #
+    # It does NOT restrict which Host header is accepted: Flask dropped that behavior
+    # in 2.3, and this app runs Flask 3.x. Requests with any Host are served normally,
+    # which is why the container health probe can hit 127.0.0.1:8000 directly.
     SERVER_NAME = os.getenv("SERVER_NAME")
     PREFERRED_URL_SCHEME = os.getenv("PREFERRED_URL_SCHEME", "https")
 
