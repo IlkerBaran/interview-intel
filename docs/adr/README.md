@@ -36,6 +36,7 @@ See [ADR-0001](0001-record-architecture-decisions.md) for why this practice exis
 | [0013](0013-per-user-lifetime-analysis-quota.md)                          | Per-User Lifetime Analysis Quota              | Accepted |
 | [0014](0014-classifier-retrain-and-label-redesign.md)                     | Classifier Retrain and Label Redesign         | Accepted |
 | [0015](0015-public-demo-via-committed-fixture.md)                         | Public Demo via Committed Fixture          | Accepted |
+| [0016](0016-one-application-image-four-container-roles.md)                | One Application Image, Four Container Roles | Accepted |
 
 ## Adding a new ADR
 
