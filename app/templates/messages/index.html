@@ -236,7 +236,7 @@
     {% if messages %}
 
         <div class="filter-bar">
-            <select class="filter-select" id="category-filter" onchange="filterMessages()">
+            <select class="filter-select" id="category-filter">
                 <option value="">All categories</option>
                 <option value="interview_invitation">Interview Invitation</option>
                 <option value="offer">Offer</option>
@@ -247,7 +247,7 @@
                 <option value="application_received">Application Received</option>
             </select>
 
-            <select class="filter-select" id="urgency-filter" onchange="filterMessages()">
+            <select class="filter-select" id="urgency-filter">
                 <option value="">All urgency</option>
                 <option value="high">High</option>
                 <option value="medium">Medium</option>
@@ -346,28 +346,5 @@
 
 
 {% block extra_scripts %}
-<script>
-    function filterMessages() {
-        const categoryFilter = document.getElementById("category-filter").value;
-        const urgencyFilter  = document.getElementById("urgency-filter").value;
-        const cards          = document.querySelectorAll(".message-card");
-        const countEl        = document.getElementById("filter-count");
-
-        let visible = 0;
-
-        cards.forEach(card => {
-            const catMatch = !categoryFilter || card.dataset.category === categoryFilter;
-            const urgMatch = !urgencyFilter  || card.dataset.urgency  === urgencyFilter;
-
-            if (catMatch && urgMatch) {
-                card.style.display = "block";
-                visible++;
-            } else {
-                card.style.display = "none";
-            }
-        });
-
-        countEl.textContent = `${visible} email${visible !== 1 ? "s" : ""}`;
-    }
-</script>
+<script src="{{ url_for('static', filename='js/messages-filter.js') }}"></script>
 {% endblock %}

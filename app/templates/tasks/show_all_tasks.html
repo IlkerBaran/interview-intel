@@ -358,10 +358,10 @@
 
         <!-- ── FILTER BUTTONS ── -->
         <div class="filter-bar">
-            <button class="filter-btn active" onclick="filterTasks('all', this)">All</button>
-            <button class="filter-btn" onclick="filterTasks('pending', this)">Pending</button>
-            <button class="filter-btn" onclick="filterTasks('completed', this)">Completed</button>
-            <button class="filter-btn" onclick="filterTasks('high', this)">High Priority</button>
+            <button type="button" class="filter-btn active" data-filter="all">All</button>
+            <button type="button" class="filter-btn" data-filter="pending">Pending</button>
+            <button type="button" class="filter-btn" data-filter="completed">Completed</button>
+            <button type="button" class="filter-btn" data-filter="high">High Priority</button>
             <span class="filter-count" id="filter-count">{{ total }} task{{ 's' if total != 1 else '' }}</span>
         </div>
 
@@ -425,7 +425,7 @@
                         <form method="POST"
                               action="{{ url_for('tasks.delete_task', task_id=task.id) }}"
                               style="margin:0"
-                              onsubmit="return confirm('Delete this task?')">
+                              data-confirm="Delete this task?">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="task-delete-btn">Delete</button>
                         </form>
@@ -474,31 +474,5 @@
 
 
 {% block extra_scripts %}
-<script>
-    function filterTasks(filter, btn) {
-        // update active button
-        document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-
-        const cards   = document.querySelectorAll(".task-card");
-        const countEl = document.getElementById("filter-count");
-        let visible   = 0;
-
-        cards.forEach(card => {
-            const status   = card.dataset.status;
-            const priority = card.dataset.priority;
-
-            let show = false;
-            if (filter === "all")       show = true;
-            if (filter === "pending")   show = status === "pending";
-            if (filter === "completed") show = status === "completed";
-            if (filter === "high")      show = priority === "high";
-
-            card.style.display = show ? "flex" : "none";
-            if (show) visible++;
-        });
-
-        countEl.textContent = `${visible} task${visible !== 1 ? "s" : ""}`;
-    }
-</script>
+<script src="{{ url_for('static', filename='js/tasks-filter.js') }}"></script>
 {% endblock %}

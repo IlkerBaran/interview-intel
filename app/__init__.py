@@ -4,6 +4,7 @@ from datetime import UTC
 
 from flask import Flask, has_request_context
 from flask_login import current_user
+from flask_talisman import Talisman
 from sqlalchemy import func
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -16,6 +17,42 @@ from .celery_app import celery_init_app
 from config import config_by_name
 
 logger = logging.getLogger(__name__)
+
+
+# ≈≈≈≈ Content Security Policy ≈≈≈≈
+# Derived from what the templates actually reference, not from a default policy.
+#
+# script-src is 'self' with no 'unsafe-inline' and no nonce: every inline
+# <script> lives in app/static/js/ and every former on*= handler is an
+# addEventListener there, so there is no inline script left to authorize.
+# Keep it that way — one inline handler silently disables a page's JS.
+# tests/unit/test_security_headers.py fails the build if one reappears.
+#
+# style-src keeps 'unsafe-inline' for the 100 static style="" attributes across
+# the served templates (a further 41 live in templates/email/, which no CSP
+# governs). Nonces cannot help here: a nonce covers <style> ELEMENTS, never
+# style="" ATTRIBUTES, and adding one would make browsers ignore
+# 'unsafe-inline' and break all of them at once.
+#
+# Google Fonts needs TWO entries: the stylesheet from fonts.googleapis.com
+# (style-src) and the font files it @font-faces to from fonts.gstatic.com
+# (font-src). Dropping font-src fails silently as a fallback typeface.
+#
+# img-src is 'self' with no data:, and GSAP/ScrollTrigger are vendored under
+# static/js/vendor/ rather than pulled from a CDN — both verified against the
+# templates and CSS, which contain no data: URIs and no url() at all.
+CSP = {
+    "default-src":     "'self'",
+    "script-src":      "'self'",
+    "style-src":       ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+    "font-src":        ["'self'", "https://fonts.gstatic.com"],
+    "img-src":         "'self'",
+    "connect-src":     "'self'",
+    "form-action":     "'self'",
+    "frame-ancestors": "'self'",
+    "base-uri":        "'self'",
+    "object-src":      "'none'",
+}
 
 
 def _safe_rollback():
@@ -59,6 +96,61 @@ def create_app():
     migrate.init_app(app, db)    # migrate connection to app and db
     login_manager.init_app(app)  # login_manager connection to app
     csrf.init_app(app)           # csrf_token() calls
+
+    # ≈≈≈≈ Security headers ≈≈≈≈
+    # Talisman replaces the old after_request security-header code.
+    # It keeps the same X-Content-Type-Options, X-Frame-Options, and
+    # Referrer-Policy behavior, while also adding CSP and HSTS support.
+    # # Create a new Talisman instance for each Flask app instead of sharing the
+    # module-level instance. Talisman stores app-specific configuration and keeps
+    # a reference to the app, so reusing one instance across multiple create_app()
+    # calls could cause one app to overwrite another app's Talisman settings.
+    #
+    # Set every option explicitly, even when it matches Talisman's default.
+    # This keeps security behavior predictable if library defaults change later.
+    https = app.config.get("TALISMAN_HTTPS", False)
+    Talisman(
+        app,
+        content_security_policy=CSP,
+        # No CSP nonce is needed because there are no remaining inline scripts.
+        force_https=https,
+        # Use a temporary 302 redirect instead of a permanent 301 redirect.
+        force_https_permanent=False,
+        # Enable HSTS only when HTTPS enforcement is enabled.
+        strict_transport_security=https,
+        strict_transport_security_max_age=app.config["TALISMAN_HSTS_MAX_AGE"],
+        # Do not apply HSTS to all subdomains. The current certificate covers
+        # only this host, and other subdomains may not be ready for HTTPS.
+        strict_transport_security_include_subdomains=False,
+        # Do not enable HSTS preload. Preload is a long-term commitment and
+        # requires at least a one-year HSTS max-age.
+        strict_transport_security_preload=False,
+        # Require HTTPS for session cookies only when HTTPS is enabled.
+        session_cookie_secure=https,
+        # Prevent JavaScript from reading the session cookie.
+        session_cookie_http_only=True,
+        # Pinned. Flask leaves SameSite unset, so browsers apply their own Lax
+        # default — behavior that is real but undeclared. Stating it here means
+        # neither a Talisman default nor a browser default can move it.
+        session_cookie_samesite="Lax",
+        # Allow this site to be framed only by pages from the same origin.
+        frame_options="SAMEORIGIN",
+        # Explicitly keep the current referrer policy instead of relying
+        # on a library default.
+        referrer_policy="strict-origin-when-cross-origin",
+        # Prevent browsers from guessing a response's content type.
+        x_content_type_options=True,
+        # Disable the obsolete X-XSS-Protection browser feature.
+        # Modern browsers no longer use it; CSP provides the modern protection.
+        x_xss_protection=False,
+        # Talisman 1.1.0 ships this default itself (opting out of the Topics
+        # API). Restated so the emitted header is ours rather than inherited.
+        permissions_policy={"browsing-topics": "()"},
+    )
+    logger.info(
+        "Talisman enabled — CSP on, HTTPS enforcement %s",
+        "on" if https else "off (plain-HTTP deploy)",
+    )
 
     # ≈≈≈≈ Reverse proxy — must run BEFORE the limiter sees any request ≈≈≈≈
     # Rate limits key on the client IP, so the app has to observe the REAL client
@@ -112,19 +204,6 @@ def create_app():
             "ml_service": ml_service,
             "llm_service": llm_service
         }
-
-    # TODO: replace with Flask-Talisman for production security headers
-    # Requires: pip install flask-talisman
-    # Requires: move all inline style="" attributes to CSS classes
-    # Requires: add nonce="{{ csp_nonce }}" to all inline <script> and <style> blocks
-    # See: https://github.com/GoogleCloudPlatform/flask-talisman
-    @app.after_request
-    def set_security_headers(response):
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        return response
-
 
     # ≈≈≈≈ timestamp rendering ≈≈≈≈
     @app.template_filter("utc_iso")

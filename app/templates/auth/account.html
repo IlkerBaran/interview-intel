@@ -224,7 +224,7 @@
                         submitted and its analysis, your tasks, applications, and notifications. This can't be undone.
                     </p>
                     <form method="POST" action="{{ url_for('auth.delete_account') }}"
-                          onsubmit="return confirm('Permanently delete your account and all your data? This cannot be undone.');">
+                          data-confirm="Permanently delete your account and all your data? This cannot be undone.">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-danger">Delete my account</button>
                     </form>

@@ -14,6 +14,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager, current_user
 from flask_wtf.csrf import CSRFProtect
+from flask_talisman import Talisman
 
 from app.utils import normalize_email
 
@@ -22,6 +23,25 @@ migrate = Migrate()
 login_manager = LoginManager()
 csrf = CSRFProtect()
 
+# ≈≈≈≈ Talisman: decorator factory ONLY — never init_app()ed ≈≈≈≈
+# Unlike the other extensions, this Talisman object must NOT be initialized
+# with an app or shared as the app's active Talisman instance.
+#
+# Talisman stores app-specific settings on the instance and keeps a reference
+# to the initialized Flask app. Reusing one initialized instance across multiple
+# create_app() calls could let a later app overwrite settings associated with
+# an earlier one and cause requests to use or modify the wrong app's config.
+#
+# create_app() therefore creates a separate Talisman instance for each Flask app.
+#
+# This module-level instance exists only so routes can use decorators such as:
+#
+#     @talisman(force_https=False)
+#
+# The decorator only attaches Talisman options to the view function; it does
+# not initialize this instance with a Flask app. The per-app Talisman instance
+# serving the request later reads those options from the current app's view.
+talisman = Talisman()
 
 # ≈≈≈≈ Rate limiting ≈≈≈≈
 # Default limits are keyed by client IP. Routes that need a different scope

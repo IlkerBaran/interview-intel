@@ -433,7 +433,7 @@
         <form method="POST"
               action="{{ url_for('tasks.delete_task', task_id=task.id) }}"
               style="margin:0"
-              onsubmit="return confirm('Delete this task? This cannot be undone.')">
+              data-confirm="Delete this task? This cannot be undone.">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-danger">Delete Task</button>
         </form>

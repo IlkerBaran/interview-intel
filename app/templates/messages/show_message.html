@@ -101,7 +101,7 @@
             <form method="POST"
                   action="{{ url_for('messages.delete_message', message_id=message.id) }}"
                   style="margin:0"
-                  onsubmit="return confirm('Delete this email and all its data? This cannot be undone.')">
+                  data-confirm="Delete this email and all its data? This cannot be undone.">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-danger">Delete Email</button>
             </form>

@@ -243,23 +243,5 @@
 
 
 {% block extra_scripts %}
-<script>
-    const textarea  = document.getElementById("note-textarea");
-    const counter   = document.getElementById("char-count");
-    const MAX_CHARS = 400;
-
-    function updateCount() {
-        const len = textarea.value.length;
-        counter.textContent = `${len} / ${MAX_CHARS}`;
-
-        if (len > MAX_CHARS * 0.9) {
-            counter.classList.add("warn");
-        } else {
-            counter.classList.remove("warn");
-        }
-    }
-
-    updateCount();
-    textarea.addEventListener("input", updateCount);
-</script>
+<script src="{{ url_for('static', filename='js/edit-note.js') }}"></script>
 {% endblock %}

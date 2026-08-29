@@ -37,6 +37,7 @@ See [ADR-0001](0001-record-architecture-decisions.md) for why this practice exis
 | [0014](0014-classifier-retrain-and-label-redesign.md)                     | Classifier Retrain and Label Redesign         | Accepted |
 | [0015](0015-public-demo-via-committed-fixture.md)                         | Public Demo via Committed Fixture          | Accepted |
 | [0016](0016-one-application-image-four-container-roles.md)                | One Application Image, Four Container Roles | Accepted |
+| [0017](0017-content-security-policy-and-security-headers.md)              | Content Security Policy and Security Headers via Flask-Talisman | Accepted |
 
 ## Adding a new ADR
 

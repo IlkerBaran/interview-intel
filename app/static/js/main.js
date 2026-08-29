@@ -1,4 +1,32 @@
 // ════════════════════════════════════════
+// CONFIRM BEFORE DESTRUCTIVE SUBMIT
+// Replaces onsubmit="return confirm(...)" on the
+// delete forms so script-src needs no
+// 'unsafe-inline'. The prompt travels on
+// data-confirm.
+//
+// Three deliberate choices, all about failing
+// CLOSED rather than open — a missed prompt means
+// a silent delete:
+//   1. Delegated from document, so no element has
+//      to exist at bind time. notifications.js
+//      appends server-rendered HTML after load.
+//   2. Capture phase, so a form-level handler
+//      calling stopPropagation cannot suppress it.
+//   3. Registered FIRST in this file, so a throw
+//      in any block below cannot skip it.
+// ════════════════════════════════════════
+document.addEventListener("submit", function (event) {
+    const form = event.target;
+    if (!form.matches || !form.matches("form[data-confirm]")) return;
+
+    if (!window.confirm(form.dataset.confirm)) {
+        event.preventDefault();   // matches the old `return false`
+    }
+}, true);
+
+
+// ════════════════════════════════════════
 // NAVBAR TOGGLE (mobile)
 // Opens/closes the nav menu on small screens.
 // ════════════════════════════════════════
@@ -118,3 +146,22 @@ document.querySelectorAll('.portal').forEach(function (portal) {
         setTimeout(() => dismiss(flash), AUTO_MS);
     });
 })();
+
+
+// ════════════════════════════════════════
+// BACK LINK
+// Replaces href="javascript:history.back()" on the
+// session-expired page. Delegated for consistency;
+// the href stays a real URL, so the link still
+// works if this never runs.
+// ════════════════════════════════════════
+document.addEventListener("click", function (event) {
+    if (!event.target.closest) return;
+    const link = event.target.closest("a[data-history-back]");
+    if (!link) return;
+
+    if (window.history.length > 1) {
+        event.preventDefault();
+        window.history.back();
+    }
+});

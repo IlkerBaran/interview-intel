@@ -196,6 +196,43 @@ class Config:
     # cannot be reached directly around the trusted proxies.
     TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "0"))
 
+    # ≈≈≈≈ Security headers (Flask-Talisman) ≈≈≈≈
+    # Controls whether this deployment actually uses HTTPS/TLS.
+    # It is off by default and enabled explicitly through the environment.
+    #
+    # Do not base this on FLASK_ENV. The Docker Compose setup uses
+    # FLASK_ENV=production while still running locally over plain HTTP
+    # (SERVER_NAME=localhost:8000). Automatically enabling HTTPS just because
+    # FLASK_ENV=production would therefore break `docker compose up`.
+    #
+    # This one setting controls HTTPS redirecting, HSTS, and the Secure flag on
+    # the session cookie together. All three depend on the same question:
+    # "Does this deployment really use HTTPS?" Keeping them together avoids
+    # inconsistent setups, such as redirecting to HTTPS while using cookies
+    # configured for the wrong transport.
+    #
+    # CSP is separate and always enabled. This lets CSP problems appear during
+    # local development instead of being discovered only after deployment.
+    TALISMAN_HTTPS = os.getenv("TALISMAN_HTTPS", "false").strip().lower() in ("1", "true", "yes", "on")
+
+    # HSTS tells browsers to keep using HTTPS for this hostname for the configured
+    # amount of time. Start with the final value on the first deployment instead
+    # of gradually increasing it, because this deployment is not expected to
+    # switch back to HTTP.
+    #
+    # includeSubDomains and HSTS preload remain disabled, so the HSTS policy applies
+    # only to this hostname and does not automatically affect other subdomains.
+    #
+    # Setting TALISMAN_HSTS_MAX_AGE=0 can clear an existing HSTS policy, but only
+    # if the browser can still connect successfully over valid HTTPS and receive
+    # that new header. If the TLS certificate is expired or otherwise broken, the
+    # browser may reject the connection before it can receive the clearing header.
+    # In that case, the existing HSTS policy remains until it expires unless the
+    # user clears it manually.
+    #
+    # For that reason, verify that HTTPS/TLS works correctly before enabling HSTS.
+    TALISMAN_HSTS_MAX_AGE = int(os.getenv("TALISMAN_HSTS_MAX_AGE", "31536000"))
+
     # ≈≈≈≈ External URL building ≈≈≈≈
     # Stage 2: Required so url_for(_external=True) works OUTSIDE a request — e.g. verification /
     # reset links built inside the Celery worker (ADR-0006). SERVER_NAME is app-wide.
@@ -266,6 +303,11 @@ class TestingConfig(Config):
     PREFERRED_URL_SCHEME = "http"
     LOAD_MODELS = False  # unit tests never need the ML/LLM stack
     MAIL_SUPPRESS_SEND = True  # unit tests never hit Resend
+
+    # Pinned explicitly, not merely inherited: an exported TALISMAN_HTTPS would
+    # otherwise turn on force_https and break every test client request, and set
+    # Secure on the session cookie so login-flow tests silently lose their session.
+    TALISMAN_HTTPS = False
 
     # Rate limiting OFF in tests: the suite must run with zero external services,
     # and shared limit counters would make repeated requests order-dependent.

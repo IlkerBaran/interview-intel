@@ -10,7 +10,8 @@
         For your security, the form timed out. This usually happens if you left
         the page open for too long. Just go back and try again.
     </p>
-    <a href="javascript:history.back()"
+    {# Real href, enhanced to history.back() by main.js — works without JS. #}
+    <a href="{{ url_for('main.home') }}" data-history-back
        style="display: inline-block; background: #1a1208; color: #f7f2e8; padding: 10px 24px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; text-decoration: none;">
         Go Back
     </a>
