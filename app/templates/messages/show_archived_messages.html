@@ -214,6 +214,7 @@
 
                                 {% if message.analysis_result %}
                                     {% set cat = message.analysis_result.message_category %}
+                                    {% set urg = message.analysis_result.urgency_level %}
 
                                     {{ category_badge(cat) }}
                                     {{ urgency_badge(urg) }}

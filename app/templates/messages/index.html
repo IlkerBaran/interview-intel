@@ -14,6 +14,16 @@
         gap: 12px;
     }
 
+    /* Groups the header's two links so they stay together on the right and
+       wrap as a unit on narrow screens, rather than the archive link being
+       pushed to the opposite end by the parent's space-between. */
+    .inbox-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
     .filter-bar {
         display: flex;
         gap: 8px;
@@ -228,9 +238,17 @@
             <h1 class="page-title">Inbox</h1>
             <p class="page-subtitle">Your active interview emails</p>
         </div>
-        <a href="{{ url_for('messages.new_message') }}" class="btn btn-primary">
-            + Analyze Email
-        </a>
+        <div class="inbox-actions">
+            {# Reverse of the "← Back to Inbox" link on the archived page. The
+               archive list had no entry point anywhere in the nav, so it was
+               only reachable by typing /messages/archive. #}
+            <a href="{{ url_for('messages.show_archived_messages') }}" class="btn btn-secondary">
+                Archived Messages
+            </a>
+            <a href="{{ url_for('messages.new_message') }}" class="btn btn-primary">
+                + Analyze Email
+            </a>
+        </div>
     </div>
 
     {% if messages %}

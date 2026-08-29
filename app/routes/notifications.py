@@ -51,6 +51,20 @@ def _unread_count(user_id):
     ) or 0
 
 
+def _read_count(user_id):
+    """
+    Current READ notification count for the given user.
+
+    Drives whether the "Clear read" button renders, mirroring how unread_count
+    drives "Mark all as read". Covered by ix_notifications_user_id_is_read.
+    """
+    return db.session.scalar(
+        db.select(func.count(Notification.id))
+        .where(Notification.user_id == user_id)
+        .where(Notification.is_read.is_(True))
+    ) or 0
+
+
 def _fetch_notifications_page(user_id, cursor):
     """
     Fetch one page of notifications for the user, newest first, using
@@ -134,6 +148,7 @@ def index():
         notifications=page_items,
         has_more=has_more_notifications,
         next_cursor=next_cursor,
+        read_count=_read_count(current_user.id),
     )
 
 
@@ -204,7 +219,11 @@ def mark_read(notification_id):
             )
             return jsonify(ok=False), 500
 
-    return jsonify(ok=True, unread_count=_unread_count(current_user.id))
+    return jsonify(
+        ok=True,
+        unread_count=_unread_count(current_user.id),
+        read_count=_read_count(current_user.id),
+    )
 
 
 @notifications_bp.route("/read-all", methods=["POST"])
@@ -239,4 +258,94 @@ def mark_all_read():
         )
         return jsonify(ok=False), 500
 
-    return jsonify(ok=True, unread_count=0)
+    return jsonify(ok=True, unread_count=0, read_count=_read_count(current_user.id))
+
+
+@notifications_bp.route("/<int:notification_id>/delete", methods=["POST"])
+@login_required
+@verified_required
+# EXEMPT: driven by notifications.js, so a user clearing a long list fires these
+# in bursts. Cheap and ownership-scoped — auth plus the user_id WHERE clause is
+# the real protection here, not a rate limit. Matches mark_read.
+@limiter.exempt
+def delete_notification(notification_id):
+    """
+    Delete a single notification (AJAX). Ownership is enforced by the
+    scoped 404 lookup — another user's row is indistinguishable from a
+    missing one.
+
+    Returns the unread count recomputed AFTER the commit, so the caller
+    never has to know whether the deleted row was unread: notifications.js
+    feeds the value straight to syncBadge().
+    """
+    notification = get_user_notification_or_404(notification_id)
+
+    try:
+        db.session.delete(notification)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(
+            "Failed to delete notification notification_id=%s error_type=%s",
+            notification_id,
+            type(e).__name__,
+            extra={
+                "notification_id": notification_id,
+                "error_type": type(e).__name__
+            }
+        )
+        return jsonify(ok=False), 500
+
+    return jsonify(
+        ok=True,
+        unread_count=_unread_count(current_user.id),
+        read_count=_read_count(current_user.id),
+    )
+
+
+@notifications_bp.route("/clear-read", methods=["POST"])
+@login_required
+@verified_required
+# EXEMPT: same reasoning as mark_all_read — one batch statement, ownership
+# scoped, and only ever destroys the caller's own rows.
+@limiter.exempt
+def clear_read():
+    """
+    Delete every ALREADY-READ notification for the user in a single batch
+    DELETE — no row loading, no per-row loop.
+
+    Read-only by design: unread notifications are never touched, so nothing
+    the user has not yet seen can be destroyed, and the unread count is
+    unchanged by construction. It is still recomputed rather than assumed,
+    so the response shape matches the other mutations exactly.
+    """
+    try:
+        db.session.execute(
+            db.delete(Notification)
+            .where(
+                Notification.user_id == current_user.id,
+                Notification.is_read.is_(True)
+            )
+            # Nothing reads these objects again before the response is returned,
+            # so skip the identity-map sync. Stated explicitly because a bulk
+            # DELETE removes rows: unlike mark_all_read's UPDATE, leaving the
+            # default to evaluate criteria against loaded instances would only
+            # cost work here.
+            .execution_options(synchronize_session=False)
+        )
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(
+            "Failed to clear read notifications user_id=%s error_type=%s",
+            current_user.id,
+            type(e).__name__,
+            extra={"error_type": type(e).__name__}
+        )
+        return jsonify(ok=False), 500
+
+    return jsonify(
+        ok=True,
+        unread_count=_unread_count(current_user.id),
+        read_count=_read_count(current_user.id),
+    )

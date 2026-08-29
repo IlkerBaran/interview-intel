@@ -4,18 +4,26 @@
 //   - relative timestamps (once, on load — no ticking)
 //   - mark single notification read (AJAX)
 //   - mark all read (AJAX, batch)
+//   - delete single notification (AJAX)
+//   - clear all READ notifications (AJAX, batch)
 //   - "Load more" pagination (AJAX HTML fragment, keyset cursor)
 //   - navbar bell badge sync from server unread_count
+//
+// Counts are never computed here. Every mutation returns the authoritative
+// unread_count and read_count recomputed after its commit, so the badge and
+// the "Clear read" button stay correct without this file tracking state or
+// guessing whether a deleted row happened to be unread.
 // ════════════════════════════════════════
 (function () {
     const root = document.getElementById("notif-root");
     if (!root) return;
 
-    const csrf        = root.dataset.csrf;
-    const moreUrl     = root.dataset.moreUrl;
-    const list        = document.getElementById("notif-list");
-    const markAllBtn  = document.getElementById("mark-all-btn");
-    const loadMoreBtn = document.getElementById("load-more-btn");
+    const csrf         = root.dataset.csrf;
+    const moreUrl      = root.dataset.moreUrl;
+    const list         = document.getElementById("notif-list");
+    const markAllBtn   = document.getElementById("mark-all-btn");
+    const clearReadBtn = document.getElementById("clear-read-btn");
+    const loadMoreBtn  = document.getElementById("load-more-btn");
 
     // ── Relative time ──────────────────────
     // Converts <time datetime="ISO"> text to "2 hours ago".
@@ -85,6 +93,14 @@
         }
     }
 
+    // ── "Clear read" visibility ────────────
+    // Driven by the server's read_count, not by counting loaded rows: read
+    // notifications can exist on pages "Load more" has not fetched yet.
+    function syncClearReadBtn(count) {
+        if (!clearReadBtn) return;
+        clearReadBtn.style.display = count > 0 ? "" : "none";
+    }
+
     // ── AJAX helpers ───────────────────────
     function postJSON(url, opts) {
         return fetch(url, Object.assign({
@@ -118,6 +134,37 @@
             if (data.unread_count === 0 && markAllBtn) {
                 markAllBtn.style.display = "none";
             }
+            // This row just became read, so "Clear read" may need to appear.
+            syncClearReadBtn(data.read_count);
+        }).catch(() => {});
+    });
+
+    // ── Delete single (delegated → also covers appended rows) ──
+    // The button is a SIBLING of the card, so the mark-read handler above
+    // already returns early for these clicks — its closest(".notif-card") is
+    // null. preventDefault is still belt-and-braces against a future wrapper
+    // that navigates.
+    list.addEventListener("click", function (e) {
+        const btn = e.target.closest(".notif-delete");
+        if (!btn) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        postJSON(btn.dataset.deleteUrl).then(data => {
+            if (!data.ok) return;
+
+            const row = btn.closest(".notif-row");
+            if (row) row.remove();
+
+            // Deleting an unread row lowers the badge; deleting a read row
+            // leaves it alone. Both cases are covered by using the server's
+            // post-commit count rather than adjusting it here.
+            syncBadge(data.unread_count);
+            if (data.unread_count === 0 && markAllBtn) {
+                markAllBtn.style.display = "none";
+            }
+            syncClearReadBtn(data.read_count);
         }).catch(() => {});
     });
 
@@ -132,6 +179,28 @@
                 });
                 syncBadge(0);
                 markAllBtn.style.display = "none";
+                // Everything is read now, so "Clear read" becomes available.
+                syncClearReadBtn(data.read_count);
+            }).catch(() => {});
+        });
+    }
+
+    // ── Clear read (batch) ─────────────────
+    // Removes only rows whose card is already .read. Unread rows are never
+    // touched server-side, so nothing the user has not seen can be lost and
+    // the bell count does not move.
+    if (clearReadBtn) {
+        clearReadBtn.addEventListener("click", function () {
+            postJSON(clearReadBtn.dataset.url).then(data => {
+                if (!data.ok) return;
+
+                list.querySelectorAll(".notif-card.read").forEach(card => {
+                    const row = card.closest(".notif-row");
+                    if (row) row.remove();
+                });
+
+                syncBadge(data.unread_count);
+                syncClearReadBtn(data.read_count);
             }).catch(() => {});
         });
     }

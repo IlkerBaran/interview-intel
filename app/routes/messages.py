@@ -256,8 +256,17 @@ def delete_note(message_id):
 def archive_message(message_id):
     """
     Archive a message if it belongs to logged-in user.
+
+    Only terminal states may be archived. Archiving a PENDING/PROCESSING message
+    races the worker: workflow_service later writes COMPLETED/FAILED over the
+    ARCHIVED status and the message silently returns to the inbox.
     """
     message = get_user_message_or_404(message_id)
+
+    if message.status not in (MessageStatus.COMPLETED, MessageStatus.FAILED):
+        flash("This email is still being analyzed. Try again once it finishes.", "info")
+        return redirect(url_for("messages.show_message", message_id=message_id))
+
     message.status = MessageStatus.ARCHIVED
 
     try:
@@ -287,9 +296,21 @@ def unarchive_message(message_id):
     """
     Restore an archived message back to active status
     if it belongs to the logged-in user.
+
+    Restores the state the message can actually render rather than assuming
+    success: a FAILED message restored as COMPLETED would show an empty analysis
+    block on the detail page. AnalysisResult presence is the same signal
+    workflow_service.analysis_already_done() uses to decide the work finished.
+
+    Restoring status is all that is needed. Every consumer of archiving —
+    the inbox (index), the dashboard counts and lists, and the tasks page —
+    derives from `status != ARCHIVED` at query time, so there is no
+    denormalized counter or cached aggregate to update alongside this.
     """
     message = get_user_message_or_404(message_id)
-    message.status = MessageStatus.COMPLETED
+    message.status = (
+        MessageStatus.COMPLETED if message.analysis_result else MessageStatus.FAILED
+    )
 
     try:
         db.session.commit()

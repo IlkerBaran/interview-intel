@@ -54,26 +54,44 @@
         message_id=n.message_id
     ) if n.message_id else none %}
 
-    {% if target %}
-        <a href="{{ target }}"
-           class="notif-card {{ 'unread' if not n.is_read else 'read' }}"
-           data-id="{{ n.id }}"
-           data-url="{{ url_for('notifications.mark_read', notification_id=n.id) }}">
-            {{ notification_content(n) }}
-        </a>
-    {% else %}
-        {# tabindex + role so the card is reachable and announced: it has no href
-           but is still clickable, since notifications.js marks it read on click.
-           Not operable by Enter/Space — a div does not activate natively. Renders
-           for zero rows today (every new notification records a message_id and
-           takes the <a> path above); if a message-less type such as TASK_DUE ever
-           ships, make this a real <button> rather than adding a keydown handler. #}
-        <div class="notif-card {{ 'unread' if not n.is_read else 'read' }}"
-             tabindex="0"
-             role="button"
-             data-id="{{ n.id }}"
-             data-url="{{ url_for('notifications.mark_read', notification_id=n.id) }}">
-            {{ notification_content(n) }}
-        </div>
-    {% endif %}
+    {# The delete control is a SIBLING of the card, never a child. The card is an
+       <a> that navigates to the source message and notifications.js deliberately
+       does not preventDefault on it, so a nested <button> would both be invalid
+       HTML (interactive content cannot nest) and navigate on click.
+
+       unread/read stay on .notif-card rather than moving to this wrapper, which
+       is what keeps every existing JS path working unchanged: the mark-read
+       delegation's closest(".notif-card"), mark-all's ".notif-card.unread", and
+       the load-more append. closest(".notif-card") returns null for a click on
+       the delete button, so mark-read does not fire for it. #}
+    <div class="notif-row">
+        {% if target %}
+            <a href="{{ target }}"
+               class="notif-card {{ 'unread' if not n.is_read else 'read' }}"
+               data-id="{{ n.id }}"
+               data-url="{{ url_for('notifications.mark_read', notification_id=n.id) }}">
+                {{ notification_content(n) }}
+            </a>
+        {% else %}
+            {# tabindex + role so the card is reachable and announced: it has no href
+               but is still clickable, since notifications.js marks it read on click.
+               Not operable by Enter/Space — a div does not activate natively. Renders
+               for zero rows today (every new notification records a message_id and
+               takes the <a> path above); if a message-less type such as TASK_DUE ever
+               ships, make this a real <button> rather than adding a keydown handler. #}
+            <div class="notif-card {{ 'unread' if not n.is_read else 'read' }}"
+                 tabindex="0"
+                 role="button"
+                 data-id="{{ n.id }}"
+                 data-url="{{ url_for('notifications.mark_read', notification_id=n.id) }}">
+                {{ notification_content(n) }}
+            </div>
+        {% endif %}
+
+        <button type="button"
+                class="notif-delete"
+                data-delete-url="{{ url_for('notifications.delete_notification', notification_id=n.id) }}"
+                aria-label="Delete notification"
+                title="Delete">&times;</button>
+    </div>
 {% endfor %}
