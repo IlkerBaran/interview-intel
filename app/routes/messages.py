@@ -9,6 +9,7 @@ from app.models import Message, MessageStatus
 from app.services.workflow_service import (
     queue_message_analysis,
     mark_analysis_failed,
+    had_llm_config_failure,
 )
 from app.services.quota_service import (
     consume_and_create_message,
@@ -143,7 +144,14 @@ def show_message(message_id):
     """
     message = get_user_message_or_404(message_id)
 
-    return render_template("messages/show_message.html", message=message)
+    # Only decides which fixed sentence the failed banner shows. Returns False
+    # immediately for any non-FAILED message, so the extra lookup is confined to the
+    # failure case.
+    return render_template(
+        "messages/show_message.html",
+        message=message,
+        service_failure=had_llm_config_failure(message),
+    )
 
 
 @messages_bp.route("/<int:message_id>/status", methods=["GET"])

@@ -73,7 +73,7 @@
             {% endif %}
         </div>
     </div>
-{{ analysis_status_banner(message, status_url=url_for('messages.message_status', message_id=message.id)) }}
+{{ analysis_status_banner(message, status_url=url_for('messages.message_status', message_id=message.id), service_failure=service_failure) }}
 {{ analysis_result(ar) }}
 {{ analysis_tasks(message.tasks) }}
 

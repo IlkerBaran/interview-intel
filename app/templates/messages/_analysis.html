@@ -21,7 +21,12 @@
 {# Pending/processing and failed banners. The demo only reaches the first branch;
    the failed branch reads message.quota_refunded, which Jinja never evaluates for
    a completed sample, so the fixture does not carry that field. #}
-{% macro analysis_status_banner(message, status_url=None, poll_ms=None, reload_url=None) %}
+{# service_failure: set by show_message when the analysis failed because the LLM
+   provider rejected our credentials. It is a BOOLEAN computed in the route from a
+   fixed marker constant — no provider error text reaches this template, so neither
+   branch below can leak an upstream message or a key. Defaults False, so the demo
+   and any other caller keep the original wording. #}
+{% macro analysis_status_banner(message, status_url=None, poll_ms=None, reload_url=None, service_failure=False) %}
     <!-- ── PROCESSING BANNER ── -->
     {% if message.status in ["pending", "processing"] %}
         <div class="processing-banner" id="analysis-status"{% if status_url %} data-status-url="{{ status_url }}"{% endif %}{% if poll_ms %} data-poll-ms="{{ poll_ms }}"{% endif %}{% if reload_url %} data-reload-url="{{ reload_url }}"{% endif %}>
@@ -29,7 +34,12 @@
         </div>
     {% elif message.status == "failed" %}
         <div class="processing-banner" style="background:#fef2f2; border-color:#fecaca; color:#991b1b;">
+            {%- if service_failure %}
+            ⚠️ Analysis couldn't run — the analysis service isn't available right now.
+            The raw email is still saved below.
+            {%- else %}
             ⚠️ Analysis failed for this email. The raw email is still saved below.
+            {%- endif %}
             {#- Driven by the marker the refund helpers set, so this reports what actually
                 happened rather than what usually happens. Without the refunded line a
                 counter going 3 → 2 → 3 reads as a bug; without the other line a capped

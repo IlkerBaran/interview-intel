@@ -45,6 +45,31 @@ TRANSIENT_LLM_ERRORS = (
     OverloadedError                 # 529: Anthropic service overloaded.
 )
 
+# 401/403 means the provider rejected the app's credentials, not the email.
+# Unlike message-specific 400/404/422 errors, this affects every analysis.
+# Fail the analysis and refund the quota instead of returning an empty result.
+#
+# Handle these before the generic anthropic.APIError catch.
+CONFIG_LLM_ERRORS = (
+    anthropic.AuthenticationError,   # 401: missing / invalid / revoked API key.
+    anthropic.PermissionDeniedError, # 403: key valid but not permitted for this call.
+)
+
+
+class LLMConfigurationError(RuntimeError):
+    """
+    Raised when the LLM provider rejects the credentials (401/403).
+
+    Deliberately a plain RuntimeError carrying only the SDK exception's CLASS NAME,
+    never the exception itself. The raising sites use `from None` so the original
+    is not chained. Two reasons:
+
+      1. Celery serializes exceptions for the result backend; an anthropic.APIError
+         carries the request/response objects (headers, body) with it.
+      2. Nothing derived from the provider's error text should be able to reach a
+         log line or a template that a user can see.
+    """
+
 # ── extracted action items ──
 # Enforce limits in both the prompt and code to match database field sizes.
 MAX_ACTION_ITEMS      = 5

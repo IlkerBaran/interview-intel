@@ -23,7 +23,12 @@ from app.models import (
 )
 import anthropic
 from app.services.ml_service import ml_service, JOB_FIELD_UNCLASSIFIED
-from app.services.llm_service import llm_service, TRANSIENT_LLM_ERRORS
+from app.services.llm_service import (
+    llm_service,
+    TRANSIENT_LLM_ERRORS,
+    CONFIG_LLM_ERRORS,
+    LLMConfigurationError,
+)
 from app.services.preprocess_language import normalize_text
 from app.utils import ensure_aware
 
@@ -34,6 +39,15 @@ from app.services.quota_service import refund_nothing_to_show
 
 
 logger = logging.getLogger(__name__)
+
+
+# Marker written to AgentRun.decision_reason when an analysis fails because the LLM
+# provider rejected our credentials (401/403).
+#
+# A CONSTANT, deliberately: it is the only thing the failed-analysis banner matches on
+# to choose its wording. Keeping it a fixed token — never the provider's message —
+# is what guarantees no upstream error text can reach a rendered page.
+LLM_CONFIG_FAILURE_REASON = "llm_configuration_error"
 
 
 # Structured result for auto-linking (success or fallback candidates)
@@ -366,6 +380,71 @@ def mark_analysis_failed(message_id: int) -> bool:
         return False
 
 
+def record_llm_config_failure(message_id: int) -> bool:
+    """
+    Write an audit row so the message page knows this failure came from the
+    analysis service, not the email itself, and can show a more useful message.
+
+    decision_reason is always the fixed LLM_CONFIG_FAILURE_REASON constant, never
+    provider error text. The route checks that constant and the template uses fixed
+    copy, so provider details cannot reach the page.
+
+    This runs after mark_analysis_failed() in its own transaction. The FAILED status
+    is the important part; this row only improves the wording. If writing it fails,
+    the user still sees the generic failure message and the quota refund still happens.
+
+    Never raises because it runs inside an existing failure handler.
+    """
+    try:
+        db.session.rollback()
+
+        message = db.session.get(Message, message_id)
+        if message is None:
+            return False
+
+        db.session.add(AgentRun(
+            message_id=message_id,
+            agent_name="workflow_agent",
+            selected_tools=[],
+            decision_reason=LLM_CONFIG_FAILURE_REASON,
+            status=AgentRunStatus.FAILED,
+        ))
+        db.session.commit()
+        return True
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(
+            "record_llm_config_failure: could not write audit row for message %s — %s",
+            message_id, type(e).__name__,
+            extra={
+                "message_id": message_id,
+                "error_type": type(e).__name__
+            }
+        )
+        return False
+
+
+def had_llm_config_failure(message: Message) -> bool:
+    """
+    Return True when this message failed because the LLM rejected the app's credentials.
+
+    Used to choose the service-unavailable banner in _analysis.html. It only matches
+    the fixed value written by record_llm_config_failure(), so other failure reasons
+    cannot trigger that message.
+    """
+    if message.status != MessageStatus.FAILED:
+        return False
+
+    found = db.session.execute(
+        db.select(AgentRun.id).where(
+            AgentRun.message_id == message.id,
+            AgentRun.decision_reason == LLM_CONFIG_FAILURE_REASON,
+        ).limit(1)
+    ).scalar_one_or_none()
+    return found is not None
+
+
 def run_message_analysis(message: Message) -> None:
     """
     Worker side (Stage 3): the full pipeline, run SEQUENTIALLY in the task's single
@@ -374,8 +453,14 @@ def run_message_analysis(message: Message) -> None:
     Contract with the task:
       * A TRANSIENT failure of the CRITICAL extraction call bubbles out unchanged so
         the task's retry retries the whole pipeline.
-      * A PERMANENT extraction failure degrades (details stays {}) — no retry.
-      * The 5 enrichments are best-effort: each degrades to None, never retries.
+      * A CREDENTIAL failure (401/403) of ANY call — extraction or enrichment — raises
+        LLMConfigurationError, which the task turns into FAILED + refund. Not degraded:
+        the fault is the deployment's, so every message would produce the same hollow
+        result and quietly spend a quota slot.
+      * Any OTHER permanent extraction failure (400/404/422 …) degrades (details stays
+        {}) — no retry. That failure is a property of this email, so the ML-only
+        result is still worth showing.
+      * The 5 enrichments are otherwise best-effort: each degrades to None, never retries.
       * All result rows commit in ONE transaction (atomic writes).
     """
     user_id = message.user_id
@@ -458,12 +543,28 @@ def run_message_analysis(message: Message) -> None:
         except TRANSIENT_LLM_ERRORS:
             # Ordered BEFORE the generic handler: let the task retry the pipeline.
             raise
+
+        except CONFIG_LLM_ERRORS as e:
+            # 401/403 means the provider rejected the app's credentials.
+            # Handle these before the generic APIError catch because they subclass it.
+            #
+            # Do not degrade to ML-only: this is a deployment-wide failure, so the task
+            # should mark the analysis FAILED and refund the quota.
+            # `from None` removes the SDK exception context so provider request/response
+            # details are not carried with the traceback.
+            raise LLMConfigurationError(type(e).__name__) from None
+
         except anthropic.APIError as e:
-            # Permanent (400/401/403/404/422 …) — degrade, do NOT retry.
+            # Permanent and message-specific (400/404/422 …) — degrade, do NOT retry.
+            # Unchanged: a malformed or unprocessable email still yields an ML-only
+            # analysis rather than a failure.
             logger.error(
                 "LLM extraction permanently failed for message %s — %s",
                 message.id, type(e).__name__,
-                extra={"message_id": message.id, "error_type": type(e).__name__},
+                extra={
+                    "message_id": message.id,
+                    "error_type": type(e).__name__
+                }
             )
             details, llm_ran = {}, False
     else:
@@ -891,7 +992,18 @@ def _run_llm_enrichments(
     for key, fn in calls.items():
         try:
             outputs[key] = fn()
+        except CONFIG_LLM_ERRORS as e:
+            # Handle this before the best-effort enrichment handler, which would otherwise
+            # swallow it like a normal enrichment failure.
+            #
+            # This can happen if credentials are revoked after extraction succeeds. The
+            # remaining enrichments would fail too, leaving only a partial result with no
+            # guidance. Fail and refund instead of saving that incomplete analysis.
+            raise LLMConfigurationError(type(e).__name__) from None
+
         except Exception as e:
+            # Best-effort: one failed enrichment degrades to NULL and the section is
+            # omitted from the page. Unchanged.
             logger.error(
                 "LLM enrichment failed: %s — %s",
                 key,

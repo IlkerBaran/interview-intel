@@ -52,7 +52,7 @@ from app.services.auth_service import (
     generate_password_reset_token
 )
 from app.services.email_service import _send_via_resend
-from app.services.llm_service import TRANSIENT_LLM_ERRORS
+from app.services.llm_service import TRANSIENT_LLM_ERRORS, LLMConfigurationError
 
 
 logger = logging.getLogger(__name__)
@@ -438,6 +438,7 @@ def analyze_message(self, message_id: int) -> None:
     """
     from app.services.workflow_service import (
         run_message_analysis, analysis_already_done, mark_analysis_failed,
+        record_llm_config_failure,
     )
 
     # Quota refund:
@@ -517,6 +518,31 @@ def analyze_message(self, message_id: int) -> None:
             },
         )
         raise self.retry(exc=exc, countdown=countdown)
+
+    except LLMConfigurationError as exc:
+        # 401/403 means the provider credentials are wrong, not that this email failed.
+        #
+        # This branch comes before the generic permanent-error handler so we can log
+        # the real cause and record an audit entry. That lets the UI report that the
+        # analysis service is unavailable instead of making the email look like the
+        # problem.
+        #
+        # Do not retry: rejected credentials will fail again and only waste retries.
+        # Use the uncapped refund_analysis() path because this is a configuration
+        # failure, not bad user input, and the failed call should not consume quota.
+        logger.error(
+            "analyze_message: LLM configuration failure message_id=%s error_type=%s "
+            "— marking FAILED (check ANTHROPIC_API_KEY)",
+            message_id, str(exc),
+            extra={
+                "message_id": message_id,
+                "error_type": str(exc)
+            }
+        )
+        mark_analysis_failed(message_id)
+        record_llm_config_failure(message_id)
+        refund_analysis(message_id)  # no usable result — return the slot
+        return
 
     except Exception as e:
         # Permanent / unexpected → terminal FAILED, no retry.
