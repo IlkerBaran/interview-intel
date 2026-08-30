@@ -10,6 +10,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .extensions import db, migrate, login_manager, csrf, limiter
 from .routes import register_blueprints
+from .cli import register_cli
 from .models import User, Message, Task, AnalysisResult, Notification, AgentRun
 from .services.ml_service import ml_service
 from .services.llm_service import llm_service
@@ -358,5 +359,8 @@ def create_app():
 
     # register the blueprints
     register_blueprints(app)
+
+    # register the operator CLI commands (flask verify-user)
+    register_cli(app)
 
     return app
