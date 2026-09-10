@@ -55,6 +55,16 @@ talisman = Talisman()
 # Any destination-based limit must be applied uniformly to both existing and
 # nonexistent accounts; applying it only after confirming that an account
 # exists could reveal account existence through different rate-limit behavior.
+# get_remote_address() is request.remote_addr — the socket peer, unless
+# create_app() installed client-IP middleware in front of the app. Behind a
+# proxy the peer is the proxy, so every user would share one bucket; app/proxy.py
+# is what makes remote_addr the real client there, and CLIENT_IP_SOURCE is what
+# decides whether that rewrite happens at all.
+#
+# Every IP-keyed limit in this app reaches the client address through this one
+# function — the default key below and the two fallbacks underneath it. Resolve
+# the client anywhere else and there are two definitions of "the client" to keep
+# in sync; there is deliberately only one.
 limiter = Limiter(key_func=get_remote_address) # set default rate-limit per user IP address
 
 

@@ -8,6 +8,8 @@ from flask_talisman import Talisman
 from sqlalchemy import func
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from .proxy import ForwardedForLeftmost
+
 from .extensions import db, migrate, login_manager, csrf, limiter
 from .routes import register_blueprints
 from .cli import register_cli
@@ -154,18 +156,34 @@ def create_app():
     )
 
     # ≈≈≈≈ Reverse proxy — must run BEFORE the limiter sees any request ≈≈≈≈
-    # Rate limits key on the client IP, so the app has to observe the REAL client
-    # address. Behind a proxy, request.remote_addr is the proxy's own IP and every
-    # user would share a single bucket. ProxyFix rewrites remote_addr (and the
-    # scheme) from the X-Forwarded-* headers.
+    # Scheme and client IP are handled separately because Railway's forwarded
+    # headers have different trust rules (see config.py and ADR-0012).
     #
-    # Left off entirely when TRUSTED_PROXY_HOPS is 0 (the default) — trusting a
-    # forwarded header with no proxy in front would let any client spoof its IP.
-    # See the TRUSTED_PROXY_HOPS note in config.py for how to pick the value.
-    proxy_hops = app.config.get("TRUSTED_PROXY_HOPS", 0)
-    if proxy_hops > 0:
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=proxy_hops, x_proto=proxy_hops)
-        logger.info("ProxyFix enabled for %s forwarded hop(s)", proxy_hops)
+    # X-Forwarded-Proto:
+    # ProxyFix reads from the right, so one trusted TLS terminator is represented
+    # by x_proto=1. This is independent of the X-Forwarded-For chain length.
+    # x_for stays 0 because ProxyFix must never rewrite the client IP here.
+    #
+    # X-Forwarded-For:
+    # Railway's chain length can vary, so the client IP is taken from the leftmost
+    # value instead of using a hop count. This is safe only when the ingress
+    # overwrites client-supplied X-Forwarded-For.
+    #
+    # With no trusted proxy, neither forwarded header is trusted.
+    proto_hops = app.config.get("TRUSTED_PROXY_PROTO_HOPS", 0)
+    if proto_hops > 0:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=0, x_proto=proto_hops)
+        logger.info("ProxyFix enabled — x_proto=%s (scheme only)", proto_hops)
+
+    client_ip_source = app.config.get("CLIENT_IP_SOURCE", "remote-addr")
+    if client_ip_source == "xff-leftmost":
+        app.wsgi_app = ForwardedForLeftmost(app.wsgi_app)
+        logger.info(
+            "Client IP from the leftmost X-Forwarded-For value — "
+            "valid only while a header-overwriting ingress is in front"
+        )
+    else:
+        logger.info("Client IP from the socket peer — no forwarded header trusted")
 
     # Initialized AFTER login_manager so the per-user key funcs in extensions.py can
     # resolve current_user.

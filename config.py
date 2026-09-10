@@ -5,6 +5,80 @@ from pathlib import Path
 load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 
+
+# How the app determines the client IP:
+#
+# remote-addr  = use the socket peer; ignore forwarded headers.
+# xff-leftmost = use the first X-Forwarded-For value.
+#
+# xff-leftmost is safe only when the ingress overwrites client-supplied XFF,
+# as Railway does. We intentionally do not support an XFF hop count because
+# Railway's chain length varies by routing path. See ADR-0012.
+CLIENT_IP_SOURCES = ("remote-addr", "xff-leftmost")
+
+
+def _client_ip_source(name="CLIENT_IP_SOURCE", *, required=False):
+    """
+    Read the client-IP resolution mode from the environment.
+
+    Defaults to the socket peer, which is the only answer that is safe without
+    knowing what is in front of the app. ProductionConfig passes `required` so
+    a real deployment has to state its ingress model rather than inherit a
+    default that happens to be wrong for it.
+
+    An unrecognised value raises instead of falling back. Falling back would
+    turn a typo — `xff_leftmost`, `leftmost` — into a silent downgrade to the
+    peer address, which is the site-wide-lockout failure in ADR-0012.
+    """
+    raw = (os.getenv(name) or "").strip().lower()
+
+    if not raw:
+        if required:
+            raise ValueError(
+                f"{name} must be set in environment "
+                f"(one of {', '.join(CLIENT_IP_SOURCES)}; "
+                "use xff-leftmost on Railway, remote-addr with no proxy in front)"
+            )
+        return "remote-addr"
+
+    if raw not in CLIENT_IP_SOURCES:
+        raise ValueError(
+            f"{name} must be one of {', '.join(CLIENT_IP_SOURCES)}, got {raw!r}"
+        )
+
+    return raw
+
+
+def _proxy_hop_count(name, hint="", *, required=False):
+    """
+    Read the X-Forwarded-Proto trusted-hop count.
+
+    Client IP does not use a hop count; Railway's XFF chain length varies, so
+    it is resolved separately by position. Proto is read from the right, so
+    one trusted TLS terminator remains one hop regardless of XFF length.
+
+    Missing values default to 0 unless required. Invalid or negative values
+    raise instead of silently disabling proxy trust.
+    """
+    raw = (os.getenv(name) or "").strip()
+
+    if not raw:
+        if required:
+            raise ValueError(
+                f"{name} must be set in environment" + (f" ({hint})" if hint else "")
+            )
+        return 0
+
+    try:
+        hops = int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a whole number, got {raw!r}") from None
+
+    if hops < 0:
+        raise ValueError(f"{name} must be zero or greater, got {hops}")
+
+    return hops
+
 class Config:
     """
     Application configuration module.
@@ -41,9 +115,9 @@ class Config:
       - Disables debug and testing modes.
       - Requires `SECRET_KEY`, `DATABASE_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`,
         `RATELIMIT_STORAGE_URI`, `WTF_CSRF_SECRET_KEY`, `ANTHROPIC_API_KEY`,
-        `RESEND_API_KEY`, `MAIL_DEFAULT_SENDER`, `SERVER_NAME` and
-        `TRUSTED_PROXY_HOPS` to be set in the environment, raising on startup if any
-        is missing.
+        `RESEND_API_KEY`, `MAIL_DEFAULT_SENDER`, `SERVER_NAME`,
+        `CLIENT_IP_SOURCE` and `TRUSTED_PROXY_PROTO_HOPS` to be set in the
+        environment, raising on startup if any is missing.
       - These checks are gated on `FLASK_ENV == "production"`. The class body runs on
         every import of this module, so an ungated raise would make `config.py`
         unimportable in development and CI without a `.env`.
@@ -181,20 +255,36 @@ class Config:
         "socket_timeout": _RATELIMIT_SOCKET_TIMEOUT,
     }
 
-    # ≈≈≈≈ Reverse proxy hops (X-Forwarded-For) ≈≈≈≈
-    #   0 = no trusted proxy; use the direct connection address
-    #   1 = one trusted reverse proxy or platform router
-    #   2 = two trusted layers, such as a CDN followed by a reverse proxy
+    # ≈≈≈≈ Reverse proxy: client IP and scheme (X-Forwarded-*) ≈≈≈≈
+    # These settings are intentionally separate:
     #
-    # ProxyFix selects the client address based on this many trusted values from
-    # the right side of X-Forwarded-For. Configure this to match the deployed
-    # proxy chain exactly. Too few may identify a shared proxy as the client;
-    # too many may trust a client-supplied value and allow IP-based limits to be
-    # bypassed.
+    # CLIENT_IP_SOURCE         = client IP from X-Forwarded-For
+    # TRUSTED_PROXY_PROTO_HOPS = scheme from X-Forwarded-Proto
     #
-    # Verify the deployed platform's header behavior and ensure the application
-    # cannot be reached directly around the trusted proxies.
-    TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "0"))
+    # Client IP:
+    # Railway's X-Forwarded-For chain length varies by routing path, so a fixed
+    # ProxyFix(x_for=N) count is unsafe. The stable value is the leftmost one:
+    # Railway overwrites client-supplied XFF and writes the real client IP first.
+    # Therefore Railway deployments use xff-leftmost. See ADR-0012.
+    #
+    # xff-leftmost is safe only behind an ingress that overwrites incoming XFF.
+    # Without such an ingress, clients could spoof the header, so the default is
+    # remote-addr.
+    #
+    # Scheme:
+    # X-Forwarded-Proto is handled separately with ProxyFix(x_proto=N).
+    # It is read from the right, so one trusted TLS terminator means x_proto=1,
+    # independent of the X-Forwarded-For chain length.
+    #
+    # 0 = no trusted proxy; use the real connection scheme
+    # 1 = trust one X-Forwarded-Proto value from the nearest TLS terminator
+    #
+    # Setting this too high can leave request.is_secure false on HTTPS requests,
+    # disabling Flask-WTF's strict HTTPS CSRF referer check.
+    #
+    # Both settings assume the app cannot be reached directly around the ingress.
+    CLIENT_IP_SOURCE = _client_ip_source()
+    TRUSTED_PROXY_PROTO_HOPS = _proxy_hop_count("TRUSTED_PROXY_PROTO_HOPS")
 
     # ≈≈≈≈ Security headers (Flask-Talisman) ≈≈≈≈
     # Controls whether this deployment actually uses HTTPS/TLS.
@@ -367,19 +457,27 @@ class ProductionConfig(Config):
 
     PREFERRED_URL_SCHEME = os.getenv("PREFERRED_URL_SCHEME") or "https"
 
-    # Rate limiting keys on the client IP, so the hop count must be stated explicitly
-    # in production: silently defaulting to 0 behind a proxy puts every user in one
-    # bucket and the global limit locks out the whole site.
+    # Proxy trust must be explicit in production.
     #
-    # The FLASK_ENV check is required, not redundant: this class body executes on every
-    # import of config.py — including under development/testing, where
-    # TRUSTED_PROXY_HOPS is not set — so an unconditional raise would break dev startup.
-    TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "-1"))
-    if TRUSTED_PROXY_HOPS < 0 and os.getenv("FLASK_ENV") == "production":
-        raise ValueError(
-            "TRUSTED_PROXY_HOPS must be set in environment "
-            "(0 = no proxy, 1 = one nginx / PaaS router / ALB, 2 = Cloudflare -> nginx)"
-        )
+    # CLIENT_IP_SOURCE controls client-IP resolution. Defaulting to the socket peer
+    # behind a proxy would put all users in the same rate-limit bucket.
+    #
+    # TRUSTED_PROXY_PROTO_HOPS controls X-Forwarded-Proto separately; it must never
+    # be derived from the X-Forwarded-For configuration. A wrong value can leave
+    # request.is_secure false on HTTPS requests. See ADR-0012.
+    #
+    # These are required only in production because config.py is also imported by
+    # development and tests, where no proxy settings may be present.
+    _proxy_required = os.getenv("FLASK_ENV") == "production"
+
+    CLIENT_IP_SOURCE = _client_ip_source(required=_proxy_required)
+
+    TRUSTED_PROXY_PROTO_HOPS = _proxy_hop_count(
+        "TRUSTED_PROXY_PROTO_HOPS",
+        "count the values in X-Forwarded-Proto, independently of X-Forwarded-For: "
+        "0 = no proxy, 1 = a TLS terminator sets it (Railway)",
+        required=_proxy_required,
+    )
 
 
 config_by_name = {
