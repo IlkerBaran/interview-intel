@@ -8,13 +8,24 @@ BASE_DIR = Path(__file__).resolve().parent
 
 # How the app determines the client IP:
 #
-# remote-addr  = use the socket peer; ignore forwarded headers.
-# xff-leftmost = use the first X-Forwarded-For value.
+# remote-addr      = use the socket peer; ignore forwarded headers.
+# cf-connecting-ip = use the CF-Connecting-IP header Cloudflare writes.
 #
-# xff-leftmost is safe only when the ingress overwrites client-supplied XFF,
-# as Railway does. We intentionally do not support an XFF hop count because
-# Railway's chain length varies by routing path. See ADR-0012.
-CLIENT_IP_SOURCES = ("remote-addr", "xff-leftmost")
+# cf-connecting-ip trusts the header only on requests that prove they came
+# through Cloudflare: Cloudflare sets X-Interview-Intel-Origin to
+# CF_ORIGIN_SECRET on every request it forwards, and the app checks it. A
+# request without the secret — one that reached the origin around Cloudflare —
+# keeps the socket peer. X-Forwarded-For is not an option in either mode:
+# through Cloudflare its leftmost value is a Cloudflare edge, not the client,
+# and a right-hand hop count is unsafe because Railway's chain length varies
+# by routing path. See ADR-0012.
+CLIENT_IP_SOURCES = ("remote-addr", "cf-connecting-ip")
+
+# Removed mode, refused with a pointer rather than silently ignored. It was the
+# correct answer on direct Railway and is the value a pre-Cloudflare
+# environment still carries; behind Cloudflare it keys rate limits on
+# Cloudflare's own edge addresses, so a stale variable must fail at boot.
+_REMOVED_CLIENT_IP_SOURCE = "xff-leftmost"
 
 
 def _client_ip_source(name="CLIENT_IP_SOURCE", *, required=False):
@@ -27,8 +38,8 @@ def _client_ip_source(name="CLIENT_IP_SOURCE", *, required=False):
     default that happens to be wrong for it.
 
     An unrecognised value raises instead of falling back. Falling back would
-    turn a typo — `xff_leftmost`, `leftmost` — into a silent downgrade to the
-    peer address, which is the site-wide-lockout failure in ADR-0012.
+    turn a typo — `cf_connecting_ip`, `cloudflare` — into a silent downgrade to
+    the peer address, which is the site-wide-lockout failure in ADR-0012.
     """
     raw = (os.getenv(name) or "").strip().lower()
 
@@ -37,13 +48,69 @@ def _client_ip_source(name="CLIENT_IP_SOURCE", *, required=False):
             raise ValueError(
                 f"{name} must be set in environment "
                 f"(one of {', '.join(CLIENT_IP_SOURCES)}; "
-                "use xff-leftmost on Railway, remote-addr with no proxy in front)"
+                "use cf-connecting-ip behind Cloudflare, "
+                "remote-addr with no proxy in front)"
             )
         return "remote-addr"
 
     if raw not in CLIENT_IP_SOURCES:
+        message = f"{name} must be one of {', '.join(CLIENT_IP_SOURCES)}, got {raw!r}"
+        if raw == _REMOVED_CLIENT_IP_SOURCE:
+            message += (
+                " (removed: through Cloudflare the leftmost X-Forwarded-For value "
+                "is a Cloudflare edge, not the client; use cf-connecting-ip, "
+                "see ADR-0012)"
+            )
+        raise ValueError(message)
+
+    return raw
+
+
+# The floor on CF_ORIGIN_SECRET where it is required. Anyone with a route to
+# the origin around Cloudflare can guess at the secret one request at a time,
+# and the rate limits it protects are exactly what would otherwise slow that
+# down — so a short secret is a bypass waiting to happen. 32 characters of
+# secrets.token_urlsafe output is ~190 bits; the recommended token_urlsafe(48)
+# gives 64 characters, comfortably above the floor.
+CF_ORIGIN_SECRET_MIN_LENGTH = 32
+
+
+def _cf_origin_secret(name="CF_ORIGIN_SECRET", *, required=False):
+    """
+    Read the shared secret that proves a request came through Cloudflare.
+
+    Required only when the client-IP mode is cf-connecting-ip: that mode is
+    unusable without it, because the middleware refuses to trust
+    CF-Connecting-IP on any request that does not carry the secret. The
+    remote-addr mode never reads it, so local development and the Compose
+    stack need not set it.
+
+    Where it is required it must also be at least CF_ORIGIN_SECRET_MIN_LENGTH
+    characters; a value that is set but guessable is the same failure as one
+    that is missing, only quieter.
+
+    Whitespace is stripped so a trailing newline pasted into a platform UI
+    cannot make every request fail the check. The value is returned, never
+    logged, and never appears in an error message — the length check reports
+    only the count.
+    """
+    raw = (os.getenv(name) or "").strip()
+
+    if not raw:
+        if required:
+            raise ValueError(
+                f"{name} must be set in environment when CLIENT_IP_SOURCE=cf-connecting-ip "
+                "(the value the Cloudflare Request Header Transform rule sets in "
+                "X-Interview-Intel-Origin; generate with "
+                "python -c \"import secrets; print(secrets.token_urlsafe(48))\")"
+            )
+        return None
+
+    if required and len(raw) < CF_ORIGIN_SECRET_MIN_LENGTH:
         raise ValueError(
-            f"{name} must be one of {', '.join(CLIENT_IP_SOURCES)}, got {raw!r}"
+            f"{name} must be at least {CF_ORIGIN_SECRET_MIN_LENGTH} characters "
+            f"when CLIENT_IP_SOURCE=cf-connecting-ip, got {len(raw)}; generate with "
+            "python -c \"import secrets; print(secrets.token_urlsafe(48))\""
         )
 
     return raw
@@ -53,9 +120,10 @@ def _proxy_hop_count(name, hint="", *, required=False):
     """
     Read the X-Forwarded-Proto trusted-hop count.
 
-    Client IP does not use a hop count; Railway's XFF chain length varies, so
-    it is resolved separately by position. Proto is read from the right, so
-    one trusted TLS terminator remains one hop regardless of XFF length.
+    Client IP does not use a hop count; it comes from the single-value
+    CF-Connecting-IP header, resolved separately. Proto is read from the
+    right, so one trusted TLS terminator remains one hop regardless of how
+    many layers sit in front of it.
 
     Missing values default to 0 unless required. Invalid or negative values
     raise instead of silently disabling proxy trust.
@@ -117,7 +185,8 @@ class Config:
         `RATELIMIT_STORAGE_URI`, `WTF_CSRF_SECRET_KEY`, `ANTHROPIC_API_KEY`,
         `RESEND_API_KEY`, `MAIL_DEFAULT_SENDER`, `SERVER_NAME`,
         `CLIENT_IP_SOURCE` and `TRUSTED_PROXY_PROTO_HOPS` to be set in the
-        environment, raising on startup if any is missing.
+        environment, raising on startup if any is missing; `CF_ORIGIN_SECRET`
+        is required as well whenever `CLIENT_IP_SOURCE=cf-connecting-ip`.
       - These checks are gated on `FLASK_ENV == "production"`. The class body runs on
         every import of this module, so an ungated raise would make `config.py`
         unimportable in development and CI without a `.env`.
@@ -255,26 +324,32 @@ class Config:
         "socket_timeout": _RATELIMIT_SOCKET_TIMEOUT,
     }
 
-    # ≈≈≈≈ Reverse proxy: client IP and scheme (X-Forwarded-*) ≈≈≈≈
+    # ≈≈≈≈ Reverse proxy: client IP and scheme ≈≈≈≈
     # These settings are intentionally separate:
     #
-    # CLIENT_IP_SOURCE         = client IP from X-Forwarded-For
+    # CLIENT_IP_SOURCE         = client IP from CF-Connecting-IP
     # TRUSTED_PROXY_PROTO_HOPS = scheme from X-Forwarded-Proto
     #
     # Client IP:
-    # Railway's X-Forwarded-For chain length varies by routing path, so a fixed
-    # ProxyFix(x_for=N) count is unsafe. The stable value is the leftmost one:
-    # Railway overwrites client-supplied XFF and writes the real client IP first.
-    # Therefore Railway deployments use xff-leftmost. See ADR-0012.
+    # The public ingress is Cloudflare, in front of Railway. Measured live,
+    # CF-Connecting-IP carried the real client on every request, and the
+    # leftmost X-Forwarded-For value did not (it is a Cloudflare edge, because
+    # Railway sees Cloudflare as its connecting client). So the production
+    # deployment uses cf-connecting-ip, and X-Forwarded-For is never read for
+    # the client IP in any mode. See ADR-0012.
     #
-    # xff-leftmost is safe only behind an ingress that overwrites incoming XFF.
-    # Without such an ingress, clients could spoof the header, so the default is
-    # remote-addr.
+    # cf-connecting-ip is safe only on requests that actually came through
+    # Cloudflare, so the app checks: Cloudflare sets X-Interview-Intel-Origin
+    # to CF_ORIGIN_SECRET on every request it forwards, and the middleware
+    # trusts CF-Connecting-IP only when that header matches (constant-time).
+    # A request that reached Railway around Cloudflare keeps the socket peer.
+    # The default is still remote-addr and the mode is opt-in; the secret is
+    # read only for cf-connecting-ip and is never logged.
     #
     # Scheme:
     # X-Forwarded-Proto is handled separately with ProxyFix(x_proto=N).
     # It is read from the right, so one trusted TLS terminator means x_proto=1,
-    # independent of the X-Forwarded-For chain length.
+    # however many layers (Cloudflare, Railway) sit in front of it.
     #
     # 0 = no trusted proxy; use the real connection scheme
     # 1 = trust one X-Forwarded-Proto value from the nearest TLS terminator
@@ -282,8 +357,10 @@ class Config:
     # Setting this too high can leave request.is_secure false on HTTPS requests,
     # disabling Flask-WTF's strict HTTPS CSRF referer check.
     #
-    # Both settings assume the app cannot be reached directly around the ingress.
+    # The scheme setting assumes the app cannot be reached directly around the
+    # ingress; the client-IP setting verifies it per request via the secret.
     CLIENT_IP_SOURCE = _client_ip_source()
+    CF_ORIGIN_SECRET = _cf_origin_secret()
     TRUSTED_PROXY_PROTO_HOPS = _proxy_hop_count("TRUSTED_PROXY_PROTO_HOPS")
 
     # ≈≈≈≈ Security headers (Flask-Talisman) ≈≈≈≈
@@ -472,10 +549,18 @@ class ProductionConfig(Config):
 
     CLIENT_IP_SOURCE = _client_ip_source(required=_proxy_required)
 
+    # The origin secret is what makes cf-connecting-ip safe, so that mode cannot
+    # boot without it. remote-addr never reads it, so the Compose stack — which
+    # is FLASK_ENV=production with no Cloudflare — is not asked for one.
+    CF_ORIGIN_SECRET = _cf_origin_secret(
+        required=_proxy_required and CLIENT_IP_SOURCE == "cf-connecting-ip",
+    )
+
     TRUSTED_PROXY_PROTO_HOPS = _proxy_hop_count(
         "TRUSTED_PROXY_PROTO_HOPS",
-        "count the values in X-Forwarded-Proto, independently of X-Forwarded-For: "
-        "0 = no proxy, 1 = a TLS terminator sets it (Railway)",
+        "count the trusted X-Forwarded-Proto values from the right, independently "
+        "of the client-IP setting: 0 = no proxy, 1 = the nearest TLS terminator "
+        "sets it (Railway, with or without Cloudflare in front)",
         required=_proxy_required,
     )
 

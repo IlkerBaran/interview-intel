@@ -8,7 +8,7 @@ from flask_talisman import Talisman
 from sqlalchemy import func
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from .proxy import ForwardedForLeftmost
+from .proxy import CfConnectingIp
 
 from .extensions import db, migrate, login_manager, csrf, limiter
 from .routes import register_blueprints
@@ -156,31 +156,41 @@ def create_app():
     )
 
     # ≈≈≈≈ Reverse proxy — must run BEFORE the limiter sees any request ≈≈≈≈
-    # Scheme and client IP are handled separately because Railway's forwarded
-    # headers have different trust rules (see config.py and ADR-0012).
+    # Scheme and client IP are handled separately because they come from
+    # different headers with different trust rules (see config.py and ADR-0012).
     #
     # X-Forwarded-Proto:
     # ProxyFix reads from the right, so one trusted TLS terminator is represented
-    # by x_proto=1. This is independent of the X-Forwarded-For chain length.
-    # x_for stays 0 because ProxyFix must never rewrite the client IP here.
+    # by x_proto=1, however many layers (Cloudflare, Railway) sit in front of it.
+    # x_for stays 0 because ProxyFix must never rewrite the client IP here:
+    # through Cloudflare, X-Forwarded-For does not identify the client at any
+    # position.
     #
-    # X-Forwarded-For:
-    # Railway's chain length can vary, so the client IP is taken from the leftmost
-    # value instead of using a hop count. This is safe only when the ingress
-    # overwrites client-supplied X-Forwarded-For.
+    # CF-Connecting-IP:
+    # Cloudflare writes the real client address into this single-value header
+    # and rejects a client-supplied one at its edge. The app trusts it only on
+    # requests that also carry the origin secret Cloudflare sets in
+    # X-Interview-Intel-Origin, so a request that reached the origin around
+    # Cloudflare keeps the socket peer. Opt-in, and the secret is never logged.
     #
-    # With no trusted proxy, neither forwarded header is trusted.
+    # With no trusted proxy, no forwarded header is trusted.
     proto_hops = app.config.get("TRUSTED_PROXY_PROTO_HOPS", 0)
     if proto_hops > 0:
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=0, x_proto=proto_hops)
         logger.info("ProxyFix enabled — x_proto=%s (scheme only)", proto_hops)
 
     client_ip_source = app.config.get("CLIENT_IP_SOURCE", "remote-addr")
-    if client_ip_source == "xff-leftmost":
-        app.wsgi_app = ForwardedForLeftmost(app.wsgi_app)
+    if client_ip_source == "cf-connecting-ip":
+        # The constructor refuses a missing secret. ProductionConfig already
+        # requires it, but a development environment that opts into this mode
+        # must fail the same way rather than install a gate nothing can pass.
+        app.wsgi_app = CfConnectingIp(
+            app.wsgi_app, origin_secret=app.config.get("CF_ORIGIN_SECRET")
+        )
         logger.info(
-            "Client IP from the leftmost X-Forwarded-For value — "
-            "valid only while a header-overwriting ingress is in front"
+            "Client IP from CF-Connecting-IP, gated on %s — "
+            "valid only while the origin secret is known to Cloudflare and this app alone",
+            CfConnectingIp.ORIGIN_HEADER,
         )
     else:
         logger.info("Client IP from the socket peer — no forwarded header trusted")

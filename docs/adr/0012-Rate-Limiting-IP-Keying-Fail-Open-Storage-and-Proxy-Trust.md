@@ -89,22 +89,24 @@ and the app refuses to start otherwise — matching how the other required secre
 behave.
 
 That reasoning survives. The hop *count* does not: it assumes the chain length is fixed,
-and on Railway it is not. The next two sections replace the count for the client IP and
-keep it for the scheme.
+and on Railway it is not. The next sections replace the count for the client IP — first by
+position, on direct Railway, and then by a dedicated header once Cloudflare became the
+public ingress — and keep it for the scheme.
 
-### The client IP is resolved by position, not by a hop count
+### The client IP is not resolved by a hop count
 
 `TRUSTED_PROXY_HOPS` originally fed both `ProxyFix(x_for=…)` and `ProxyFix(x_proto=…)`.
 Two problems, found in that order: one count cannot serve two headers that carry different
 numbers of values, and — the larger one — **a count from the right is the wrong model for
 Railway at all**.
 
-#### What the deployed service actually sends
+#### What direct Railway sent
 
-Measured on the live service by logging the raw forwarding headers, repeated across many
-requests, and compared against a request carrying a client-supplied
-`X-Forwarded-For: 1.2.3.4`. The left-hand value was checked against an independently
-measured public IPv4 address:
+Measured on the live service while it was reached on its platform-issued
+`*.up.railway.app` hostname, with nothing in front of Railway, by logging the raw
+forwarding headers, repeated across many requests, and compared against a request carrying
+a client-supplied `X-Forwarded-For: 1.2.3.4`. The left-hand value was checked against an
+independently measured public IPv4 address:
 
 | observation | result |
 |---|---|
@@ -143,66 +145,180 @@ that is safe against a chain whose length is not promised, because raising N to 
 longer path is the same edit as trusting one more attacker-supplied value on the shorter
 one.
 
-#### What is stable, and why the leftmost value is trustworthy *here*
+#### The interim answer: the leftmost value, on direct Railway
 
-Railway's edge **overwrites** a client-supplied `X-Forwarded-For` and writes the real
-connecting address as the first entry. That is stated by Railway support — *"We do strip
-`X-Forwarded-For` at our edge and ensure clients cannot overwrite it"* — and it is what the
-forged-header test showed directly: `1.2.3.4` never reached the app on any attempt. Under
-both routing paths, position 0 is the client. Position 0 does not care how long the chain
-is.
+Railway's edge **overwrites** a client-supplied `X-Forwarded-For` and writes the address
+that connected to it as the first entry — stated by Railway support (*"We do strip
+`X-Forwarded-For` at our edge and ensure clients cannot overwrite it"*) and shown directly
+by the forged-header test above. With nothing in front of Railway, the address that
+connected to it *was* the client, under both routing paths, at position 0. That shipped as
+`CLIENT_IP_SOURCE=xff-leftmost`, with its trust boundary stated as: safe if and only if the
+ingress replaces the client-supplied header.
 
-So the client IP is taken from the leftmost `X-Forwarded-For` value, by a small WSGI
-wrapper in `app/proxy.py`, and `ProxyFix` is left to the scheme alone with `x_for=0`.
+That condition was met by Railway's edge, and it stopped being *sufficient* the moment a
+second ingress went in front of it. Position 0 is "whoever connected to Railway". Once
+that is Cloudflare, position 0 is Cloudflare.
 
-**The trust boundary, stated plainly:** trusting the leftmost value is safe **if and only
-if** the ingress replaces the client-supplied header. Where it does not, the leftmost value
-is a string the attacker typed, and every IP-keyed limit becomes bypassable one request at
-a time. This is a *stronger* assumption about the platform than a hop count makes — a hop
-count needs only that the trusted proxies append, not that they sanitise — and it is
-accepted deliberately, because on Railway the weaker assumption is not available: there is
-no fixed count to use.
+### The client IP is read from `CF-Connecting-IP` behind Cloudflare
 
-That condition is therefore never assumed. `CLIENT_IP_SOURCE` is opt-in per environment and
-defaults to `remote-addr`:
+Cloudflare now fronts the custom domain, in front of Railway. That changes what Railway
+sees as its client, and so what every `X-Forwarded-For` position means, so the measurement
+was repeated through the public ingress.
+
+#### What the deployed service sends through Cloudflare
+
+Measured live through `https://interview-intel.com`, repeated across requests, with the
+same public-IP cross-check as before:
+
+| observation | result |
+|---|---|
+| `CF-Connecting-IP` | the real client IP, on **every** request |
+| `X-Forwarded-For` leftmost | **not** the real client IP — Railway now sees Cloudflare as its connecting client |
+| forged `CF-Connecting-IP: 1.2.3.4`, sent through the custom domain | **rejected by Cloudflare with HTTP 403**; the request never reached the app |
+| the platform-issued `*.up.railway.app` hostname, requested directly | Railway `404 Application not found` — no route to the app around Cloudflare |
+
+#### Why `X-Forwarded-For` is not read at all
+
+The leftmost value was the client only because Railway wrote the connecting address there
+and nothing sat in front of Railway. With Cloudflare in front, the connecting address *is*
+a Cloudflare edge. Keying on it would put every user behind a Cloudflare PoP into one
+bucket, on an address that changes as Cloudflare routes — the too-low failure from the
+first section, arriving without a deploy and with a healthy log.
+
+No other position helps. Cloudflare documents that it *appends* the connecting address to
+whatever `X-Forwarded-For` the client sent rather than replacing it, so counting from the
+left trusts an attacker-typed prefix, and counting from the right is the fixed-chain-length
+model already rejected. The header carries nothing this app can safely use. In
+`cf-connecting-ip` mode it is therefore not consulted at any position — and there is
+deliberately **no fallback to it** when `CF-Connecting-IP` is absent, because that fallback
+would silently reintroduce exactly the edge-keying that was measured.
+
+#### Why `CF-Connecting-IP` is trustworthy *here*, and where the trust ends
+
+Cloudflare writes exactly one value — the address that connected to Cloudflare — and
+refuses a request that arrives at its edge already carrying the header, which the
+forged-header test showed directly as a 403. Under that ingress the header *is* the
+client: `app/proxy.py` rewrites `REMOTE_ADDR` from it, and `ProxyFix` is left to the
+scheme alone with `x_for=0`.
+
+**The trust boundary, stated plainly:** `CF-Connecting-IP` is meaningful **only on a
+request that actually came through Cloudflare** — Cloudflare's own guidance says as much.
+On a request that reached Railway some other way, the header is whatever the sender typed.
+Everything that stops such a request from existing happens *before* the app: Cloudflare's
+403 at its edge, and the absence of any route to Railway that skips Cloudflare. The
+platform hostname answering 404 is what makes the second condition true today, and it is
+evidence about the platform as it is now, not a guarantee about the platform as it will
+be: a re-enabled hostname or a stray DNS record would create the route with no deploy and
+no symptom. So the app does not take passage through Cloudflare on faith. It verifies it
+per request, as the next section describes, and a request that cannot prove it keeps the
+socket peer.
+
+The mode is still opt-in and never a default. `CLIENT_IP_SOURCE` is set per environment
+and defaults to `remote-addr`:
 
 | `CLIENT_IP_SOURCE` | client IP comes from | correct where |
 |---|---|---|
 | `remote-addr` (default) | the socket peer; forwarded headers ignored entirely | nothing trusted is in front — local dev, the Compose stack |
-| `xff-leftmost` | the first `X-Forwarded-For` value | the ingress overwrites the header — Railway |
+| `cf-connecting-ip` | the `CF-Connecting-IP` header, on requests carrying the origin secret | Cloudflare is the public ingress and sets the secret — production |
 
-`TRUSTED_PROXY_HOPS` is removed rather than kept as a third mode. It is dead configuration
-for both environments this app runs in, and keeping a right-count option available invites
-someone to reach for the model this section just rejected. If the app ever moves behind a
-fixed, self-managed chain — an nginx or ALB whose hops are known — the enum above is where
-that mode gets added back, with its own measurement.
+A value that is missing, or does not parse as exactly one bare IP address — a
+comma-separated list, `host:port`, `unknown`, an IPv6 zone ID — is discarded and the
+socket peer is used instead. Cloudflare produces none of those, so none should become a
+rate-limit key; collapsing into the shared peer bucket is the restrictive direction to
+fail. A missing header is the expected shape for a request that never crossed Cloudflare,
+such as the container healthcheck. The value is parsed and normalised rather than passed
+through as text, so `2001:DB8::1` and `2001:db8::1` cannot be two buckets.
 
-A leftmost value that does not parse as an IP address is discarded and the socket peer is
-used instead. `X-Forwarded-For` is allowed to carry `unknown`, obfuscated identifiers and
-`host:port` pairs, none of which should become a rate-limit key; collapsing into the shared
-peer bucket is the restrictive direction to fail.
+#### Origin authentication: the request proves it came through Cloudflare
+
+A shared secret, `CF_ORIGIN_SECRET`, is known to exactly two parties. Cloudflare presents
+it on every request it forwards, by a Request Header Transform rule that *sets* the
+private header `X-Interview-Intel-Origin` to the secret — *set*, not add-if-missing, so a
+value a client put there is overwritten rather than passed through. The app holds the same
+value from the environment. In `cf-connecting-ip` mode the middleware trusts
+`CF-Connecting-IP` only when that header is present and equal to the secret; otherwise the
+request is treated as having reached the origin around Cloudflare, `REMOTE_ADDR` stays the
+socket peer, and a warning names the fallback so a missing rule or an unexpected route is
+noticed rather than discovered as a rate-limit ticket. The presented values are not in
+that warning: one is attacker-chosen text, the other may be most of the secret.
+
+The comparison is `hmac.compare_digest` over bytes, never `==`. A plain comparison returns
+at the first differing byte, and the timing difference is measurable across enough
+requests to recover the secret one byte at a time — and recovering the secret is
+precisely the attack this check has to survive, since the rate limits it protects are the
+thing that would otherwise slow the guessing down. The header name is deliberately
+app-specific rather than a generic `X-Origin-Verify`, so a rule copied from another zone
+cannot satisfy it by accident.
+
+What this changes about the boundary: the residual trust moves from the *network path* to
+the *secret*. The app no longer relies on there being no route to Railway that skips
+Cloudflare; it relies on the secret being known to Cloudflare and itself alone. That is a
+much better thing to rely on. It is under this project's control — the value is generated
+here and placed in two places by hand — where the absence of a route is a property of two
+platforms' configurations that can change independently of anything in this repository.
+The direct-hostname 404 becomes defence in depth rather than the load-bearing assumption.
+
+What it does not change: a request that *does* carry the secret is trusted as delivered.
+The app cannot tell a value Cloudflare wrote from one written by whoever else holds the
+secret, and does not try. `tests/unit/test_proxy_trust.py` pins both sides of that line —
+without the secret a forged `CF-Connecting-IP` is ignored; with it, it is the client — so
+no one reads more into the check than is there. The secret is therefore handled like the
+other production secrets: required at boot in the mode that needs it — and at least 32
+characters there, since a guessable secret is the missing one with a quieter failure —
+never committed
+(`.env*` is ignored; the examples ship the variable commented out with no value), never
+logged, and never included in an error message. Rotation is safe in either order: while
+the two copies disagree, every forwarded request fails the check and falls back to the
+peer — the restrictive direction, and the warning above says so on every request until
+they agree again.
+
+Two remaining properties are worth stating. The check is a *gate*, not a source: a valid
+secret on a request with no `CF-Connecting-IP` resolves to the peer, exactly as before.
+And the restrictive fallback has a cost when it is the *rule* that is wrong rather than
+the request — if the transform rule is removed or mis-set, every user collapses into the
+peer bucket and the global default limit becomes a site-wide lockout. That is the too-low
+failure from the first section, chosen deliberately over the too-high one, and it is why
+the fallback logs rather than staying silent.
+
+#### `xff-leftmost` is removed, not kept as a mode
+
+For the reason `TRUSTED_PROXY_HOPS` was: it is dead configuration for both environments
+this app runs in, and keeping it available invites someone to reach for the model this
+section just rejected. Behind Cloudflare it is not merely dead but wrong — it keys limits
+on Cloudflare's edges. A pre-Cloudflare environment still carrying the value fails at boot
+with a message that names `cf-connecting-ip`, rather than being mapped to anything
+silently. If Cloudflare is ever removed and the app is again reached on Railway directly,
+the enum is where the position-0 mode gets added back, with the direct-Railway
+measurement above re-run first, since it is Railway's edge behaviour that made it correct.
+The implementation is in this repository's history.
 
 #### `X-Real-IP` is deliberately not used
 
-It was correct on every request tested, which is exactly what makes it dangerous. Railway
-populates `X-Real-IP` with the **CDN edge address** rather than the client's whenever the
-CDN path is active, and has acknowledged that as a bug on their side. The measurements above
-were taken on requests where it happened to agree with the client. Keying rate limits on it
-would work until the routing flipped, and then silently put every user behind a PoP into one
-bucket — the same failure as a too-low hop count, arriving without a deploy.
+On direct Railway it was correct on every request tested, which is exactly what made it
+dangerous: Railway populates `X-Real-IP` with the **CDN edge address** rather than the
+client's whenever the CDN path is active, and has acknowledged that as a bug on their
+side. Keying rate limits on it would work until the routing flipped, and then silently put
+every user behind a PoP into one bucket — the same failure as a too-low hop count,
+arriving without a deploy. It was not re-measured through Cloudflare, and does not need to
+be: it can only carry whatever Railway writes for *its* connecting client — a Cloudflare
+edge, or Railway's own CDN edge — and neither is the user. It is not read in any mode, and
+it is not a fallback when `CF-Connecting-IP` is absent.
 
 ### The protocol count is separate, and stays a count
 
 `X-Forwarded-Proto` is a different question and must not inherit its answer from the
-`X-Forwarded-For` chain length. A count is the right model here, for the reason it is the
-wrong one above: ProxyFix reads this header from the **right**, where the nearest trusted
-TLS terminator writes, and every layer in front of this app terminates TLS. `x_proto=1` is
-correct whether the header carries one value or several, so chain-length variation cannot
-move it. Railway sends exactly one value, `https`.
+client-IP setting. A count is the right model here, for the reason it is the wrong one
+above: ProxyFix reads this header from the **right**, where the nearest trusted TLS
+terminator writes, and every layer in front of this app terminates TLS. `x_proto=1` is
+correct whether the header carries one value or several, so neither Railway's chain-length
+variation nor Cloudflare adding a hop in front of Railway's terminator can move it. Direct
+Railway sent exactly one value, `https`; whether Railway appends to or overwrites what
+Cloudflare sends, the rightmost value is still Railway's, so the count is unchanged at 1.
 
-| variable | drives | Railway | local / Compose |
+| variable | drives | production (Cloudflare → Railway) | local / Compose |
 |---|---|---|---|
-| `CLIENT_IP_SOURCE` | `app/proxy.py` — client IP, `X-Forwarded-For` | `xff-leftmost` | `remote-addr` |
+| `CLIENT_IP_SOURCE` | `app/proxy.py` — client IP, `CF-Connecting-IP` | `cf-connecting-ip` | `remote-addr` |
+| `CF_ORIGIN_SECRET` | `app/proxy.py` — proof of passage, `X-Interview-Intel-Origin` | the value the Cloudflare rule sets | unset; never read |
 | `TRUSTED_PROXY_PROTO_HOPS` | `ProxyFix(x_proto=…)` — scheme, `X-Forwarded-Proto` | `1` | `0` |
 
 Overshooting the protocol count is worth naming because nothing at runtime reports it. At
@@ -215,10 +331,12 @@ HTTPS request, and Flask-WTF runs its `WTF_CSRF_SSL_STRICT` referer check only
 
 Both settings are required in production for the reason the first one already was: there is
 no safe guess, and a refusal to start names the missing variable while a guess hides it
-behind pages that look fine. The off values stay legal explicit answers — the Compose stack
-sets `remote-addr`/`0`, since it runs `FLASK_ENV=production` with no proxy in front of it.
-Each wrapper is installed only when its setting asks for it, so the local posture leaves
-both out of the WSGI stack rather than installing no-ops.
+behind pages that look fine. `CF_ORIGIN_SECRET` is required only when `CLIENT_IP_SOURCE`
+is `cf-connecting-ip` — the mode is unusable without it, and `remote-addr` never reads it.
+The off values stay legal explicit answers — the Compose stack sets `remote-addr`/`0` and
+no secret, since it runs `FLASK_ENV=production` with no proxy in front of it. Each wrapper
+is installed only when its setting asks for it, so the local posture leaves both out of the
+WSGI stack rather than installing no-ops.
 
 `x_host`, `x_port` and `x_prefix` stay at ProxyFix's `0` default. `SERVER_NAME` is
 configured explicitly (ADR-0006), so no forwarded host, port or prefix needs trusting, and
@@ -262,19 +380,31 @@ are now gated on `FLASK_ENV`, and the suite passes with no `.env` present.
 
 ### Limits of this guarantee
 
-- **`xff-leftmost` is a statement about the ingress, not about the app.** It is correct
-  only while something in front replaces a client-supplied `X-Forwarded-For`. That holds on
-  Railway today — stated by their support and confirmed live — but it is a platform
-  property that can change without a deploy on this side, and if it ever did, IP rate
-  limiting would become bypassable with no visible symptom. It is the assumption to re-test
-  after any platform migration, and the reason the setting is per-environment rather than a
-  default. It also assumes the app cannot be reached directly around the edge; that too is
-  the platform's guarantee, not this app's.
-- **The measurements are Railway's, at one point in time.** `tests/unit/test_proxy_trust.py`
-  pins the *rules* — leftmost wins, chain length is irrelevant, no forwarded header is
-  trusted at the default posture — rather than the two-element shape that happened to be on
-  the wire, precisely because that shape moved between observations. Another platform needs
-  its own measurement and quite possibly its own mode.
+- **`cf-connecting-ip` is a statement about the secret, not about the app.** It is correct
+  while `CF_ORIGIN_SECRET` is known to Cloudflare and this app alone. Anyone else who
+  holds it can reach the origin around Cloudflare — if such a route ever exists — and
+  choose their own rate-limit bucket per request, with no visible symptom. The secret
+  lives in two places, the Railway environment and the Cloudflare rule, and both are
+  readable by anyone with dashboard access to either; treat access to those as access to
+  the secret, and rotate it on any suspicion. The direct-hostname 404 and Cloudflare's
+  403 on a client-supplied `CF-Connecting-IP` are still worth re-testing after any change
+  to DNS, Cloudflare, or Railway domains — they are the defence in depth — but they are no
+  longer what the guarantee rests on.
+- **The transform rule is the other half of the check, and it lives outside this repo.**
+  If it is removed, renamed, or set to a stale value, nothing here fails at boot: every
+  forwarded request fails the check, every user shares the peer bucket, and the global
+  default limit becomes a site-wide lockout. The middleware warns on every such request,
+  which is the signal to look for. This is the deliberate failure direction, chosen over
+  the one where a broken rule makes forgery possible.
+- **The measurements are one point in time.** The direct-Railway table and the
+  through-Cloudflare table were each taken once, on the platforms as they were then.
+  `tests/unit/test_proxy_trust.py` pins the *rules* — `CF-Connecting-IP` is the client
+  only alongside the origin secret, the secret is compared in constant time and appears in
+  no log, `X-Forwarded-For` is read at no position, `X-Real-IP` is read never, the scheme
+  is independent of the client-IP setting, nothing is trusted and no secret is needed at
+  the default posture — rather than any header shape that happened to be on the wire,
+  because those shapes moved between observations. Another ingress needs its own
+  measurement and quite possibly its own mode.
 - **IPv6 clients are keyed on the full address.** A client with a routed prefix can rotate
   through addresses within it and mint a fresh bucket per request. Bucketing IPv6 by `/64`
   would close that; it is not done here and is not a regression from the previous design,
