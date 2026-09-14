@@ -23,7 +23,8 @@
 //       – Idle drift:  any width, motion allowed.
 //       – Repulsion:   motion allowed AND a fine hover pointer (desktop).
 //       – Convergence: any width, motion allowed. ≤768px pins for a shorter
-//         distance (PIN_DISTANCE_MOBILE) and ignores URL-bar resizes.
+//         distance (PIN_DISTANCE_MOBILE), scrubs tighter for touch
+//         (SCRUB_MOBILE) and ignores URL-bar resizes.
 //     prefers-reduced-motion → NONE of them run; CSS fallbacks render the
 //     hero exactly as authored (no flash, no hidden content, fully usable).
 //   • transform / translate / rotate / opacity only (GPU) → 60fps target.
@@ -48,7 +49,16 @@
     // Scroll convergence (Layer 3)
     const PIN_DISTANCE        = 2200;  // px of scroll the pinned sequence consumes (>768px)
     const PIN_DISTANCE_MOBILE = 1400;  // ≤768px — a phone viewport is ~⅔ as tall; 2200 was ~3 full flicks
-    const SCRUB               = 1;     // seconds of catch-up smoothing
+    const SCRUB               = 1;     // seconds of catch-up smoothing (>768px)
+    // ≤768px. A numeric scrub is an expo-out tween restarted on every scroll
+    // event, so under a thumb 1s reads as lag: measured 85px/142ms behind a
+    // steady drag and still moving 367ms after the finger stops. 0.3 keeps
+    // nearly all of the smoothing against irregular touch scroll events
+    // (per-frame step variation 0.82 → 0.21; the floor is 0.19) at 22px/37ms
+    // of lag, settles 3 frames after the finger stops, and is already caught
+    // up when a flick's momentum dies — so the flick's own deceleration is
+    // the ease-out. Below 0.25 smoothing falls off faster than lag shrinks.
+    const SCRUB_MOBILE        = 0.3;
     const LOGO_STAGGER        = 0.04;  // gap between chip convergences
     const MOTION_DAMP         = 0.40;  // fraction of timeline over which idle/repulsion fade out
 
@@ -243,7 +253,7 @@
                 end: () => "+=" + (isMobile ? PIN_DISTANCE_MOBILE : PIN_DISTANCE),
                 pin: true,
                 anticipatePin: 1,
-                scrub: SCRUB,
+                scrub: isMobile ? SCRUB_MOBILE : SCRUB,
                 invalidateOnRefresh: true,
             },
         });
