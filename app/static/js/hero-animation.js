@@ -22,7 +22,8 @@
 //   • Everything is gated by gsap.matchMedia() and reverts cleanly.
 //       – Idle drift:  any width, motion allowed.
 //       – Repulsion:   motion allowed AND a fine hover pointer (desktop).
-//       – Convergence: ≥769px AND motion allowed (mobile keeps static hero).
+//       – Convergence: any width, motion allowed. ≤768px pins for a shorter
+//         distance (PIN_DISTANCE_MOBILE) and ignores URL-bar resizes.
 //     prefers-reduced-motion → NONE of them run; CSS fallbacks render the
 //     hero exactly as authored (no flash, no hidden content, fully usable).
 //   • transform / translate / rotate / opacity only (GPU) → 60fps target.
@@ -35,12 +36,21 @@
 
     gsap.registerPlugin(ScrollTrigger);
 
+    // Mobile Safari/Chrome fire `resize` every time the URL bar collapses or
+    // expands. ScrollTrigger's default answer is a full refresh — re-measuring
+    // the pin and (via invalidateOnRefresh) rebuilding every chip's convergence
+    // target mid-scrub — which snaps the whole constellation. Ignore height-only
+    // resizes on touch devices; rotation (a width change) still refreshes, and
+    // desktop is unaffected because the flag only applies when isTouch.
+    ScrollTrigger.config({ ignoreMobileResize: true });
+
     // ── Tunable knobs ────────────────────────────────────────────
     // Scroll convergence (Layer 3)
-    const PIN_DISTANCE   = 2200;  // px of scroll the pinned sequence consumes
-    const SCRUB          = 1;     // seconds of catch-up smoothing
-    const LOGO_STAGGER   = 0.04;  // gap between chip convergences
-    const MOTION_DAMP    = 0.40;  // fraction of timeline over which idle/repulsion fade out
+    const PIN_DISTANCE        = 2200;  // px of scroll the pinned sequence consumes (>768px)
+    const PIN_DISTANCE_MOBILE = 1400;  // ≤768px — a phone viewport is ~⅔ as tall; 2200 was ~3 full flicks
+    const SCRUB               = 1;     // seconds of catch-up smoothing
+    const LOGO_STAGGER        = 0.04;  // gap between chip convergences
+    const MOTION_DAMP         = 0.40;  // fraction of timeline over which idle/repulsion fade out
 
     // Idle drift (Layer 1)
     const DRIFT_MIN      = 15;    // px — min orbit amplitude
@@ -196,11 +206,20 @@
     });
 
     // ════════════════════════════════════════════════════════════
-    // LAYER 3 — SCROLL CONVERGENCE  (≥769px, motion allowed)
+    // LAYER 3 — SCROLL CONVERGENCE  (any width, motion allowed)
     // Pinned, scrubbed timeline: logos fly in + merge, focal zooms past,
     // hero dissolves, then ScrollTrigger unpins into the content.
+    // Conditions form of matchMedia: the callback runs when at least one
+    // condition matches and re-runs (after a clean revert) whenever either
+    // toggles, so crossing 768px rebuilds the pin exactly as it always did.
     // ════════════════════════════════════════════════════════════
-    mm.add("(min-width: 769px) and (prefers-reduced-motion: no-preference)", () => {
+    mm.add({
+        motionOK: "(prefers-reduced-motion: no-preference)",
+        isMobile: "(max-width: 768px)",
+    }, (ctx) => {
+        const { motionOK, isMobile } = ctx.conditions;
+        if (!motionOK) return;
+
         const hero    = document.getElementById("hero");
         const focal   = document.getElementById("hero-focal");
         const note    = hero.querySelector(".hero-logos-note");
@@ -221,7 +240,7 @@
             scrollTrigger: {
                 trigger: hero,
                 start: "top top",
-                end: "+=" + PIN_DISTANCE,
+                end: () => "+=" + (isMobile ? PIN_DISTANCE_MOBILE : PIN_DISTANCE),
                 pin: true,
                 anticipatePin: 1,
                 scrub: SCRUB,

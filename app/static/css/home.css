@@ -760,19 +760,42 @@
     ══════════════════════════════════════════ */
     @media (max-width: 768px) {
         /* ── HERO ── */
-        .hero { padding: 96px 20px 56px; }
+        /* Size the hero to the VISIBLE viewport. 100vh on iOS Safari / Android
+           Chrome is the largest viewport (URL bar hidden) and the desktop 700px
+           floor is taller than most phones with the bar showing — either way the
+           bottom logo row landed below the fold, and once hero-animation.js pins
+           the hero it would stay hidden for the whole scrub. svh is constant
+           while scrolling (dvh is not); the vh line is the fallback. */
+        .hero {
+            padding: 76px 20px 32px;
+            min-height: 100vh;
+            min-height: 100svh;
+        }
+        /* Vertical footprint: the headline and chips already scaled down, but
+           the desktop-sized focal, note margin and paddings did not — together
+           they overflowed every phone viewport by 170–350px. */
+        .hero-focal { width: 104px; height: 104px; margin-bottom: 20px; padding: 12px; }
         .hero-headline { font-size: 2.1rem; letter-spacing: -0.8px; }
-        .hero-sub { font-size: 1rem; }
+        .hero-sub { font-size: 1rem; margin-bottom: 24px; }
+        .hero-logos-note { margin-top: 28px; }
+        .hero-scroll-hint { margin-top: 12px; }
         .hero-logo { width: 48px; height: 48px; border-radius: 12px; }
         .hero-logo img { width: 26px; height: 26px; }
-        /* Drop the four outermost logos; pull the rest toward the corners */
+        /* Anchor the constellation to the first viewport-height of the hero
+           instead of its whole box (inset: 0), so the % positions below stay
+           on-screen even when the content is taller than a short viewport. */
+        .hero-logos { bottom: auto; height: 100vh; height: 100svh; }
+        /* Drop the four outermost logos; pull the rest toward the corners.
+           Every chip keeps ≥ 27px from the hero's clipped edges: idle drift in
+           hero-animation.js is ±25px (DRIFT_MAX) plus ~2px of rotated corner.
+           Top row: max() clears the fixed 61px navbar on short viewports. */
         .hero-logo--amazon,
         .hero-logo--meta,
         .hero-logo--airbnb,
         .hero-logo--slack { display: none; }
-        .hero-logo--google    { top: 11%; left:  6%; }
-        .hero-logo--apple     { top:  9%; left: 70%; }
-        .hero-logo--linkedin  { top: 30%; left:  4%; }
+        .hero-logo--google    { top: max(11%, 72px); left:  6%; }
+        .hero-logo--apple     { top: max( 9%, 72px); left: 70%; }
+        .hero-logo--linkedin  { top: 30%; left:  7%; }
         .hero-logo--spotify   { top: 26%; left: 78%; }
         .hero-logo--netflix   { top: 73%; left:  8%; }
         .hero-logo--microsoft { top: 78%; left: 72%; }
@@ -821,17 +844,28 @@
 
     @media (max-width: 480px) {
         /* ── HERO ── */
-        .hero-headline { font-size: 1.8rem; }
+        /* 320×568 budget: the column above the CTA must end by ~560px so all
+           three CTA links are on-screen at rest (measured 595px before this). */
+        .hero { padding-top: 72px; }
+        .hero-focal { width: 88px; height: 88px; }
+        .hero-eyebrow { margin-bottom: 10px; }
+        .hero-headline { font-size: 1.8rem; margin-bottom: 14px; }
+        .hero-sub { line-height: 1.6; margin-bottom: 20px; }
         .hero-logo { width: 40px; height: 40px; border-radius: 10px; }
         .hero-logo img { width: 22px; height: 22px; }
-        .hero-cta { flex-direction: column; gap: 12px; }
-        .hero-btn { width: 100%; max-width: 280px; text-align: center; }
-        .hero-logo--google    { top:  9%; left:  4%; }
-        .hero-logo--apple     { top:  8%; left: 74%; }
-        .hero-logo--linkedin  { top: 24%; left:  3%; }
-        .hero-logo--spotify   { top: 22%; left: 80%; }
-        .hero-logo--netflix   { top: 78%; left:  5%; }
-        .hero-logo--microsoft { top: 80%; left: 76%; }
+        .hero-cta { flex-direction: column; gap: 8px; }
+        .hero-btn { width: 100%; max-width: 280px; padding: 12px 28px; text-align: center; }
+        /* 320px viewport: left ≥ 9% keeps a 40px chip + 27px drift inside the
+           clipped hero; right-hand chips at ≤ 76% for the same reason.
+           Bottom row sits at 90–92% of the viewport-height layer so it clears
+           the full-width CTA button on a 568px-tall screen instead of hiding
+           behind it (button bottom ≈ 500px there; 90% = 511px). */
+        .hero-logo--google    { top: max( 9%, 72px); left:  9%; }
+        .hero-logo--apple     { top: max( 8%, 72px); left: 74%; }
+        .hero-logo--linkedin  { top: 24%; left:  9%; }
+        .hero-logo--spotify   { top: 22%; left: 76%; }
+        .hero-logo--netflix   { top: 90%; left:  9%; }
+        .hero-logo--microsoft { top: 92%; left: 76%; }
         .pain-row {
             grid-template-columns: 1fr;
             gap: 4px;
