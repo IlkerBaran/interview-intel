@@ -63,16 +63,15 @@
     const MOTION_DAMP         = 0.40;  // fraction of timeline over which idle/repulsion fade out
     // Text collapse (Layer 3, Phase 2): timeline position, per-element duration, cascade.
     const TEXT                = { start: 0.50, duration: 0.40, stagger: LOGO_STAGGER };  // >768px
-    // ≤768px. The desktop values make the copy the longest tween (last element
-    // ends at 1.06): 53% of a 1400px pin, and the CTA + note are still mid-
-    // collapse when the hero fade starts at 0.90 — cut off instead of arriving.
-    // Each element spent most of its readable life shrinking in place (<1px of
-    // travel per frame), which on a phone is jittery re-rasterised text. Start
-    // as the first chip lands, 0.24 per element, 0.02 cascade → last element
-    // ends exactly at 0.90: text phase 49% → 30% of the pin, the headline's
-    // readable-but-shrinking span 270 → 170px, visible motion ≤ 24px/frame in
-    // a flick, nothing cut off. Timeline length becomes 1.00 (was 1.06).
-    const TEXT_MOBILE         = { start: 0.58, duration: 0.24, stagger: 0.02 };
+    // ≤768px. With the desktop values the copy is the longest tween (last element
+    // ends at 1.06, past the hero fade at 0.90), so the CTA and note were cut off
+    // mid-collapse, and each element spent ~270px of scroll readable but only
+    // shrinking in place — jittery re-rasterised text under a thumb. 0.24/0.02
+    // from 0.58 fixed that but read as rushed. This is the midpoint: same start,
+    // 390px of scroll per element (was 485, rushed was 290), readable-but-
+    // shrinking span 210px (270 / 155), visible motion unchanged at 16px/frame
+    // in a flick, and the last element ends exactly at 0.90 so nothing is cut.
+    const TEXT_MOBILE         = { start: 0.50, duration: 0.32, stagger: 0.02 };
 
     // Idle drift (Layer 1)
     const DRIFT_MIN      = 15;    // px — min orbit amplitude
@@ -295,8 +294,9 @@
         // fixed singularity; everything else shrinks toward its center and fades on
         // the way in. (The hero — focal included — fades in Phase 3.)
         // Timing comes from TEXT / TEXT_MOBILE (see the knobs for why they differ).
+        const textTargets = [...textEls, note].filter(Boolean);
         const text = isMobile ? TEXT_MOBILE : TEXT;
-        tl.to([...textEls, note].filter(Boolean), {
+        tl.to(textTargets, {
             x:       (i, t) => centerX(focal) - centerX(t),
             y:       (i, t) => centerY(focal) - centerY(t),
             scale:   0.1,
@@ -305,6 +305,16 @@
             stagger: text.stagger,
             duration: text.duration,
         }, text.start);
+
+        // The timeline is as long as its last tween, and on desktop that is this
+        // one (0.50 + 4×0.04 + 0.40 = 1.06). The mobile copy ends at 0.90, which
+        // would shrink the timeline to 1.00 and stretch every other tween by 6%
+        // of the pin. Hold the desktop length with an empty end marker so the
+        // chips, focal and fade keep exactly their current scroll mapping.
+        if (isMobile) {
+            const desktopEnd = TEXT.start + (textTargets.length - 1) * TEXT.stagger + TEXT.duration;
+            tl.to({}, { duration: 0 }, desktopEnd);
+        }
 
         // ── Phase 3 — reveal + release (0.90 → 1.0) ─────────────
         tl.to(hero, { opacity: 0, duration: 0.10 }, 0.90);
