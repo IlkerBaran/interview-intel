@@ -119,6 +119,23 @@
         color: #a89880;
     }
 
+    /* privacy notice between the label and the textarea */
+    .privacy-notice {
+        font-size: 0.8rem;
+        color: #746857;
+        line-height: 1.5;
+        margin: 0 0 8px;
+    }
+
+    .privacy-notice a {
+        color: #8b5e3c;
+        text-decoration: none;
+    }
+
+    .privacy-notice a:hover {
+        text-decoration: underline;
+    }
+
     /* what happens next info box */
     .info-box {
         background: #f7f2e8;
@@ -261,6 +278,12 @@
             <!-- Email Content -->
             <div class="form-group">
                 {{ form.raw_text.label(class="form-label") }}
+                <p class="privacy-notice">
+                    The text you paste is stored with your account and sent to Anthropic for
+                    AI analysis — and to Google Translate if it isn't in English. It often includes
+                    other people's details, so only paste what you're allowed to share.
+                    <a href="{{ url_for('main.privacy') }}">Privacy Policy</a>
+                </p>
                 {{ form.raw_text(
                     class="form-textarea" + (" input-error" if form.raw_text.errors else ""),
                     placeholder="Paste the full interview email here...",

@@ -12,64 +12,170 @@
 
     <div class="legal-header">
         <h1 class="page-title">Privacy Policy</h1>
-        <p class="legal-updated">Last updated: July 2026</p>
+        <p class="legal-updated">Last updated: September 2026</p>
     </div>
 
     <p>
         Interview Intel is a personal portfolio project built by one developer — not a company.
-        It's provided free and as-is. This page explains, in plain English, what the app collects
-        and what happens to it. It isn't formal legal advice.
+        It's provided free and as-is. This page explains, in plain English, what the app collects,
+        where that data goes, how long it's kept, and how you can delete it. It isn't formal legal
+        advice.
     </p>
 
-    <h2>What I collect</h2>
+    <h2>What you give me</h2>
     <ul>
-        <li><strong>Your account email</strong> — so you can sign in, verify your account, and receive account emails.</li>
-        <li><strong>The message text you submit</strong> — the interview emails you paste in for analysis, plus any notes you add.</li>
-        <li><strong>Basic technical logs</strong> — standard server logs (used to keep the app running and debug issues).</li>
+        <li><strong>Your account</strong> — your email address and a password. The password is stored
+            only as a hash, never in plain text. Verification and password-reset tokens are stored
+            temporarily and expire after a few hours.</li>
+        <li><strong>The emails you paste in</strong> — the full text of each message you submit for
+            analysis, exactly as you pasted it, together with the optional subject and sender address
+            you enter and any notes you add afterwards.</li>
+        <li><strong>Job applications you track</strong> — the company, role, status, dates, links and
+            notes you enter on the Applications page.</li>
     </ul>
 
-    <h2>Why I collect it</h2>
+    <h2>What the app creates from it</h2>
     <ul>
-        <li>To create your account and sign you in.</li>
-        <li>To generate the interview analysis — reading the email text you submit and returning the category, urgency, extracted details, prep guidance, and tasks.</li>
-        <li>To send necessary account emails, like verification and password resets.</li>
+        <li><strong>Analysis results</strong> — the category, urgency and job field assigned to each
+            email; the details extracted from it (company, role, interview stage and format, dates,
+            times, locations, and the language detected); and the preparation guidance, suggested
+            questions, reply drafts and summaries generated for it.</li>
+        <li><strong>Tasks and notifications</strong> generated from each analysis.</li>
+        <li><strong>Processing records</strong> — a count of the analyses you've used (there's a
+            lifetime allowance per account) and a short internal note per message recording which
+            analysis steps ran.</li>
+    </ul>
+    <p>
+        The submitted email text and its results are stored so the app can show you your history —
+        previous submissions, their results, tasks and notifications — and so features such as
+        archiving, notes and applications work across visits.
+    </p>
+
+    <h2>Technical data</h2>
+    <ul>
+        <li><strong>Server logs</strong> — standard logs of requests to the app, including your IP
+            address, used to keep the app running and to investigate problems. If an AI response
+            can't be read by the app, a short fragment of that response may be recorded in an error
+            log.</li>
+        <li><strong>Rate limiting</strong> — request counters, kept in a short-lived cache for up to
+            24 hours, keyed by your account or by IP address when you're not signed in.</li>
+        <li><strong>Cookies</strong> — a session cookie that keeps you signed in, a security token
+            that protects forms, and — only if you tick "remember me" — a longer-lived sign-in cookie
+            of up to a year. The app uses no analytics, advertising or tracking scripts.</li>
     </ul>
 
-    <h2>AI processing</h2>
+    <h2>Other people's information</h2>
     <p>
-        To produce the analysis, the message text you submit is sent to a third-party AI provider —
-        <strong>Anthropic</strong> (the Claude API) — which processes it and returns the result.
-        Your email address is not sent to Anthropic; only the message content needed for the analysis is.
-        Anthropic handles that data under its own terms and privacy policy.
+        The emails you paste usually contain information about other people — recruiters' names,
+        email addresses, phone numbers, calendar links and company details. Interview Intel stores
+        that information as part of your message and handles it exactly like the rest of the text,
+        including sending it to the services described below. You're responsible for making sure
+        you're allowed to share what you paste. Please don't paste anything highly sensitive, such as
+        health, financial or identity-document details: the app doesn't need it and isn't designed
+        to protect it.
     </p>
 
-    <h2>Who else sees your data</h2>
+    <h2>What happens to the text you paste</h2>
+    <ul>
+        <li>The app first detects the language of the email on its own server.</li>
+        <li><strong>If the email isn't in English</strong>, its text is sent to <strong>Google
+            Translate</strong> to produce an English version, and that English version is what the
+            following steps work from. English emails skip this step.</li>
+        <li>A classifier running on the app's own server assigns the category, urgency and job
+            field. Nothing leaves the server for this step.</li>
+        <li>The email text (in English) and the details extracted from it are sent to
+            <strong>Anthropic</strong> (the Claude API) to extract details and to generate the
+            guidance, questions, reply drafts and summaries.</li>
+    </ul>
     <p>
-        Account emails (verification, password reset) are delivered through an email provider
-        (<strong>Resend</strong>), which receives your email address to send them. Apart from the
-        AI and email providers above, your data isn't shared with anyone.
-        <strong>I don't sell your data.</strong>
+        Interview Intel does not intentionally attach your account email address or any account
+        identifier to the requests it sends to Anthropic. However, whatever is contained in the text
+        you pasted — including names, email addresses or phone numbers, yours or other people's —
+        is included, because that text is what's being analysed.
+    </p>
+    <p>
+        Anthropic and Google process that text according to their own terms and privacy policies.
+        <strong>Interview Intel does not use your emails to train any model.</strong> Its classifier
+        is trained on synthetic email samples plus a small set of the developer's own messages; user
+        submissions are never used for training.
     </p>
 
-    <h2>Deleting your data</h2>
+    <h2>How I use your data</h2>
+    <ul>
+        <li>To run the analysis and show you the results.</li>
+        <li>To keep your history — previous submissions, results, tasks, applications and
+            notifications — so you can come back to them.</li>
+        <li>To improve later analyses using <em>your own</em> earlier submissions: if the app can't
+            determine a job field from an email, it checks your previous emails from the same
+            sender. It never uses other users' data for this.</li>
+        <li>To enforce the per-account analysis allowance and rate limits.</li>
+        <li>To send account emails: verification, password reset, and a notice when your password
+            changes.</li>
+    </ul>
+
+    <h2>Who else receives data</h2>
+    <ul>
+        <li><strong>Anthropic</strong> — the pasted text and the details extracted from it, for AI
+            analysis (see above).</li>
+        <li><strong>Google Translate</strong> — the pasted text, only when an email isn't in English
+            (see above).</li>
+        <li><strong>Resend</strong> — your email address and the content of account emails, in order
+            to deliver them.</li>
+        <li><strong>Railway</strong> hosts the app, its database and its background workers, and
+            <strong>Cloudflare</strong> handles traffic in front of it; both see the technical data
+            involved in serving your requests, such as your IP address.</li>
+        <li><strong>Google Fonts</strong> — pages load their fonts from Google's servers, so Google
+            receives your IP address and browser details when a page loads.</li>
+    </ul>
     <p>
-        You can delete your account yourself at any time. Go to your
-        <a href="{{ url_for('auth.account') }}">Account</a> page and choose
-        <strong>Delete my account</strong>. This permanently removes your account and everything
-        tied to it — your submitted messages and their analysis, tasks, applications, and
-        notifications.
+        Each of these providers processes data according to its own terms and privacy policy. Apart
+        from them, your data isn't shared with anyone. <strong>I don't sell your data, and I don't use
+        it for advertising.</strong>
     </p>
 
-    <h2>Contact</h2>
+    <h2>How long I keep it</h2>
+    <ul>
+        <li>Your emails, results, tasks, applications, notes and notifications are kept
+            <strong>until you delete them or delete your account</strong>. Nothing is deleted
+            automatically, and archiving a message keeps it.</li>
+        <li>Verification and password-reset tokens expire after a few hours. An account that is never
+            verified can't sign in, so it stays in the database until it's removed — email me if you'd
+            like one removed.</li>
+        <li>Rate-limit counters expire within 24 hours.</li>
+        <li>Server logs are kept by the hosting provider according to its log-retention settings.</li>
+    </ul>
+
+    <h2>Your controls</h2>
+    <ul>
+        <li><strong>Delete a message</strong> from its page. This also removes its analysis, tasks,
+            notifications and processing records. Notes, tasks, applications and notifications can
+            also be deleted individually.</li>
+        <li><strong>Export your data</strong> — on your <a href="{{ url_for('auth.account') }}">Account</a>
+            page, download a JSON file of your messages, their results and tasks. The export doesn't
+            currently include job applications or notifications.</li>
+        <li><strong>Delete your account</strong> — on your <a href="{{ url_for('auth.account') }}">Account</a>
+            page, choose <strong>Delete my account</strong>. This permanently removes your account and
+            everything tied to it: messages, results, tasks, applications, notifications and
+            tokens.</li>
+    </ul>
+    <p>
+        Deleting something removes it from Interview Intel's database. It can't recall copies already
+        sent to Anthropic, Google or Resend, which handle them according to their own policies, and it
+        doesn't alter server logs. Deleted data may also remain for a time in database backups held by
+        the hosting provider.
+    </p>
+
+    <h2>Contact and changes</h2>
     <p>
         Questions about your data? Email
         <a href="mailto:interviewintel.app@gmail.com">interviewintel.app@gmail.com</a>.
+        If the way the app handles data changes, this page and the date at the top will be updated.
     </p>
 
     <div class="legal-note">
         This is a personal portfolio project, provided as-is with no guarantees, and this page isn't
-        formal legal advice. Please don't paste anything you wouldn't want processed by a third-party
-        AI service — avoid highly sensitive personal information.
+        formal legal advice. Please don't paste anything you wouldn't want sent to a third-party AI
+        or translation service, or anything highly sensitive about you or anyone else.
     </div>
 
 </div>
