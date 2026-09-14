@@ -61,6 +61,18 @@
     const SCRUB_MOBILE        = 0.3;
     const LOGO_STAGGER        = 0.04;  // gap between chip convergences
     const MOTION_DAMP         = 0.40;  // fraction of timeline over which idle/repulsion fade out
+    // Text collapse (Layer 3, Phase 2): timeline position, per-element duration, cascade.
+    const TEXT                = { start: 0.50, duration: 0.40, stagger: LOGO_STAGGER };  // >768px
+    // ≤768px. The desktop values make the copy the longest tween (last element
+    // ends at 1.06): 53% of a 1400px pin, and the CTA + note are still mid-
+    // collapse when the hero fade starts at 0.90 — cut off instead of arriving.
+    // Each element spent most of its readable life shrinking in place (<1px of
+    // travel per frame), which on a phone is jittery re-rasterised text. Start
+    // as the first chip lands, 0.24 per element, 0.02 cascade → last element
+    // ends exactly at 0.90: text phase 49% → 30% of the pin, the headline's
+    // readable-but-shrinking span 270 → 170px, visible motion ≤ 24px/frame in
+    // a flick, nothing cut off. Timeline length becomes 1.00 (was 1.06).
+    const TEXT_MOBILE         = { start: 0.58, duration: 0.24, stagger: 0.02 };
 
     // Idle drift (Layer 1)
     const DRIFT_MIN      = 15;    // px — min orbit amplitude
@@ -282,15 +294,17 @@
         // disclaimer. The focal itself does NOT move, scale, or fade here — it's the
         // fixed singularity; everything else shrinks toward its center and fades on
         // the way in. (The hero — focal included — fades in Phase 3.)
+        // Timing comes from TEXT / TEXT_MOBILE (see the knobs for why they differ).
+        const text = isMobile ? TEXT_MOBILE : TEXT;
         tl.to([...textEls, note].filter(Boolean), {
             x:       (i, t) => centerX(focal) - centerX(t),
             y:       (i, t) => centerY(focal) - centerY(t),
             scale:   0.1,
             opacity: 0,
             ease:    "power1.in",
-            stagger: LOGO_STAGGER,
-            duration: 0.40,
-        }, 0.50);
+            stagger: text.stagger,
+            duration: text.duration,
+        }, text.start);
 
         // ── Phase 3 — reveal + release (0.90 → 1.0) ─────────────
         tl.to(hero, { opacity: 0, duration: 0.10 }, 0.90);
